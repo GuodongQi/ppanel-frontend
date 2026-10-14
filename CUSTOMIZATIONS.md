@@ -1,7 +1,8 @@
 # Customizations
 
-This fork keeps site-specific changes on `custom/*` branches while `main`
-tracks `perfect-panel/frontend`.
+This fork keeps site-specific changes on the `custom` branch while `main`
+tracks `perfect-panel/frontend`. Version numbers belong to release tags, not
+the long-lived customization branch.
 
 ## Admin
 
@@ -35,7 +36,7 @@ tracks `perfect-panel/frontend`.
 
 1. Fetch `upstream`.
 2. Create a temporary branch from the desired upstream release tag.
-3. Cherry-pick the required customization commits from `custom/*`.
+3. Cherry-pick the required customization commits from `custom`.
 4. Remove a customization if upstream has fixed the same issue.
 5. Run `bun run check`, `bun run test`, and `bun run build`.
 6. Merge or tag only after testing the generated admin and user artifacts.
