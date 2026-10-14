@@ -77,6 +77,8 @@ jobs:
         run: bun run test
 
       - name: Build
+        env:
+          VITE_BUILD_ID: ${{ env.RELEASE_TAG }}
         run: bun run build
 
       - name: Package release assets

@@ -30,7 +30,11 @@ export function initializeI18n(i18nConfig?: InitOptions) {
 
       // HTTP backend configuration
       backend: {
-        loadPath: "assets/locales/{{lng}}/{{ns}}.json", // Translation files path template (relative to base)
+        // Translation filenames are stable, so include the release tag to
+        // prevent browsers from reusing locale files from an older release.
+        loadPath: `assets/locales/{{lng}}/{{ns}}.json?v=${encodeURIComponent(
+          import.meta.env.VITE_BUILD_ID || "dev"
+        )}`,
         crossDomain: false, // Disable cross-domain requests
         withCredentials: false, // Don't send credentials with requests
         allowMultiLoading: true, // Load namespaces individually

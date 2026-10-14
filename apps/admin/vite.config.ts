@@ -22,10 +22,12 @@ import {
 // executed, and first render blocks on them, so warming the fetch cache from
 // index.html removes a full network waterfall from the critical path.
 function localePreloadPlugin(): Plugin {
+  const localeVersion = process.env.VITE_BUILD_ID || "dev";
   const script = `(() => {
   try {
     const supported = ${JSON.stringify(supportedLngs)};
     const fallback = ${JSON.stringify(fallbackLng)};
+    const localeVersion = ${JSON.stringify(localeVersion)};
     const sharedNamespaces = ${JSON.stringify(sharedI18nNamespaces)};
     const routeNamespaces = ${JSON.stringify(routeI18nNamespaces)};
     const exactRouteNamespaces = ${JSON.stringify(exactRouteI18nNamespaces)};
@@ -53,7 +55,9 @@ function localePreloadPlugin(): Plugin {
         link.rel = "preload";
         link.as = "fetch";
         link.crossOrigin = "anonymous";
-        link.href = "assets/locales/" + lang + "/" + ns + ".json";
+        link.href =
+          "assets/locales/" + lang + "/" + ns + ".json?v=" +
+          encodeURIComponent(localeVersion);
         document.head.appendChild(link);
       }
     }
