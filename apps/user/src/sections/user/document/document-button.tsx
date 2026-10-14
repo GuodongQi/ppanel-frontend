@@ -18,19 +18,13 @@ import { useGlobalStore } from "@/stores/global";
 import { hasSubscriptionVariables } from "@/utils/subscription";
 import { CloseIcon } from "./close-icon";
 
-export function DocumentButton({ items }: { items: API.Document[] }) {
+export function DocumentContent({ document }: { document: API.Document }) {
   const { t } = useTranslation("document");
-  const [active, setActive] = useState<API.Document | boolean | null>(null);
-  const id = useId();
-  const ref = useRef<HTMLDivElement>(null);
-
-  const { data } = useQuery({
-    enabled: !!(active as API.Document)?.id,
-    queryKey: ["queryDocumentDetail", (active as API.Document)?.id],
+  const { data: content } = useQuery({
+    enabled: !!document.id,
+    queryKey: ["queryDocumentDetail", document.id],
     queryFn: async () => {
-      const { data } = await queryDocumentDetail({
-        id: (active as API.Document)?.id,
-      });
+      const { data } = await queryDocumentDetail({ id: document.id });
       return data.data?.content;
     },
   });
@@ -51,7 +45,7 @@ export function DocumentButton({ items }: { items: API.Document[] }) {
     ? (getUserSubscribe(firstSubscribe.short, firstSubscribe.token)?.[0] ?? "")
     : "";
   const siteName = common.site?.site_name ?? "";
-  const documentContent = data || "";
+  const documentContent = content || "";
   const requiresSubscriptionUrl = hasSubscriptionVariables(documentContent);
   const subscriptionConfigMessage = requiresSubscriptionUrl
     ? isLoadingCommon || isLoadingSubscriptions
@@ -61,25 +55,23 @@ export function DocumentButton({ items }: { items: API.Document[] }) {
             "subscriptionConfigUnavailable",
             "Subscription configuration is unavailable. Please refresh and try again."
           )
-        : firstSubscribe
-          ? ""
-          : t("noSubscription", "Please purchase a subscription")
+        : ""
     : "";
 
-  const fillVariables = (content: string) => {
-    if (!content) {
-      return "";
-    }
+  const fillVariables = (value: string) => {
+    if (!value) return "";
+
     const hasSub = Boolean(subscribeUrl);
     const purchaseHint = t("noSubscription", "Please purchase a subscription");
-    const toBase64 = (value: string) => {
+    const toBase64 = (text: string) => {
       try {
-        return btoa(value);
+        return btoa(text);
       } catch {
         return "";
       }
     };
-    return content
+
+    return value
       .replaceAll("{{subscribe_url}}", hasSub ? subscribeUrl : purchaseHint)
       .replaceAll(
         "{{subscribe_url_encoded}}",
@@ -100,6 +92,21 @@ export function DocumentButton({ items }: { items: API.Document[] }) {
       .replaceAll("{{site_name}}", siteName)
       .replaceAll("{{site_name_encoded}}", encodeURIComponent(siteName));
   };
+
+  return subscriptionConfigMessage ? (
+    <div className="m-auto text-center text-muted-foreground">
+      {subscriptionConfigMessage}
+    </div>
+  ) : (
+    <Markdown>{fillVariables(documentContent)}</Markdown>
+  );
+}
+
+export function DocumentButton({ items }: { items: API.Document[] }) {
+  const { t } = useTranslation("document");
+  const [active, setActive] = useState<API.Document | boolean | null>(null);
+  const id = useId();
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -160,13 +167,7 @@ export function DocumentButton({ items }: { items: API.Document[] }) {
               layoutId={`card-${active.id}-${id}`}
               ref={ref}
             >
-              {subscriptionConfigMessage ? (
-                <div className="m-auto text-center text-muted-foreground">
-                  {subscriptionConfigMessage}
-                </div>
-              ) : (
-                <Markdown>{fillVariables(documentContent)}</Markdown>
-              )}
+              <DocumentContent document={active} />
             </motion.div>
           </div>
         ) : null}
