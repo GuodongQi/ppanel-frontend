@@ -81,6 +81,14 @@ const defaultValues = {
   deduction_mode: "auto",
 };
 
+function normalizeSubscribeValues<T extends Record<string, any>>(values: T): T {
+  return {
+    ...values,
+    nodes: (values.nodes || []).map(Number),
+    node_tags: (values.node_tags || []).filter(Boolean),
+  };
+}
+
 export default function SubscribeForm<T extends Record<string, any>>({
   onSubmit,
   initialValues,
@@ -126,9 +134,11 @@ export default function SubscribeForm<T extends Record<string, any>>({
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: assign(
-      defaultValues,
-      shake(initialValues, (value) => value === null) as Record<string, any>
+    defaultValues: normalizeSubscribeValues(
+      assign(
+        defaultValues,
+        shake(initialValues, (value) => value === null) as Record<string, any>
+      )
     ),
   });
 
@@ -235,9 +245,11 @@ export default function SubscribeForm<T extends Record<string, any>>({
 
   useEffect(() => {
     form?.reset(
-      assign(
-        defaultValues,
-        shake(initialValues, (value) => value === null) as Record<string, any>
+      normalizeSubscribeValues(
+        assign(
+          defaultValues,
+          shake(initialValues, (value) => value === null) as Record<string, any>
+        )
       )
     );
     const discount = form.getValues("discount") || [];

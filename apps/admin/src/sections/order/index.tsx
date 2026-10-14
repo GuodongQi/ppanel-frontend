@@ -219,6 +219,11 @@ export default function Order() {
                     await updateOrderStatus({
                       id: order.id,
                       status: value,
+                      ...(value === 2 && !order.trade_no
+                        ? {
+                            trade_no: `manual-${order.id}-${Date.now()}`,
+                          }
+                        : {}),
                     });
                     ref.current?.refresh();
                   }}

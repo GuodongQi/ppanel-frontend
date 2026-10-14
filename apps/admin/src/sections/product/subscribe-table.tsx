@@ -10,11 +10,11 @@ import {
 } from "@workspace/ui/composed/pro-table/pro-table";
 import {
   deleteSubscribeBatch as batchDeleteSubscribe,
-  postSubscribe as createSubscribe,
   deleteSubscribe,
   getSubscribeList,
+  postSubscribe,
+  putSubscribe,
   postSubscribeSort as subscribeSort,
-  putSubscribe as updateSubscribe,
 } from "@workspace/ui/services/admin/admin";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -22,6 +22,25 @@ import { toast } from "sonner";
 import { Display } from "@/components/display";
 import { useSubscribe } from "@/stores/subscribe";
 import SubscribeForm from "./subscribe-form";
+
+function sanitizeSubscribePayload<
+  T extends {
+    nodes?: (number | string)[];
+    node_tags?: string[];
+  },
+>(payload: T): T {
+  return {
+    ...payload,
+    nodes: (payload.nodes || []).map(Number),
+    node_tags: (payload.node_tags || []).filter(Boolean),
+  };
+}
+
+const createSubscribe = (payload: API.CreateSubscribeRequest) =>
+  postSubscribe(sanitizeSubscribePayload(payload));
+
+const updateSubscribe = (payload: API.UpdateSubscribeRequest) =>
+  putSubscribe(sanitizeSubscribePayload(payload));
 
 export default function SubscribeTable() {
   const { t } = useTranslation("product");
