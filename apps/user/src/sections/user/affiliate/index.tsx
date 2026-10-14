@@ -65,7 +65,8 @@ export default function Affiliate() {
 
   const handleWithdraw = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const amount = Number(withdrawAmount);
+    // The API stores money in cents while the input and Display use dollars.
+    const amount = Math.round(Number(withdrawAmount) * 100);
     const content = withdrawContent.trim();
 
     if (!Number.isFinite(amount) || amount <= 0) {

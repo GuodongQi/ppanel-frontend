@@ -413,12 +413,9 @@ export default function Content() {
                       <span className="text-muted-foreground">
                         {t("nextResetDays", "Next Reset Days")}
                       </span>
-                      <span className="font-semibold text-2xl">
+                      <span className="font-semibold text-base tabular-nums sm:text-lg">
                         {item.reset_time
-                          ? differenceInDays(
-                              new Date(item.reset_time),
-                              new Date()
-                            )
+                          ? formatDate(item.reset_time - 1000)
                           : t("noReset", "No Reset")}
                       </span>
                     </li>
@@ -501,10 +498,7 @@ export default function Content() {
                               {applications
                                 ?.filter(
                                   (application) =>
-                                    !!(
-                                      application.download_link?.[platform] &&
-                                      application.scheme
-                                    )
+                                    !!application.download_link?.[platform]
                                 )
                                 .map((application) => {
                                   const downloadUrl =
