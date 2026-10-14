@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<!--
+  全站订阅流量总览 (本站自制, 不是官方后台的一部分)。
+
+  官方后台只能一个用户一个用户地翻订阅, 这页把所有人摊平成一张表: 外层一个用户一行
+  (该用户全部订阅的合计), 展开是每条订阅的明细和占比。
+  源文件在 /docker/ppanel-web/extra/traffic.html, 由 patch-web.sh 拷进 web/admin/,
+  所以改完要重跑一次 patch-web.sh (重新下载前端后同理)。
+
+  登录态复用后台的 Authorization cookie, 自己不存任何凭据; 没登录就只提示去登录。
+
+  取数只用便宜的接口, 不碰按分钟的流水 (traffic_log 那套一天六千多条, 每页上限 100,
+  扫一遍给后端和数据库添压力):
+    /v1/admin/user/list                  用户 (分页)
+    /v1/admin/user/subscribe?user_id=    某用户的订阅 (不带 user_id 返回空, 只能逐个拿)
+    /v1/admin/log/subscribe/traffic/list?date=  某天各订阅的用量, 一天一个请求, 十几行
+  「已用」是订阅行上的累计计数器 (用户前台显示的也是它); 「近 N 天」来自上面那个按天
+  聚合接口, 两者口径不同、对不上是正常的 —— 日志按 ClearDays 清理 (本站 7 天)。
+  另外那个聚合接口每天会漏掉 23:59 那一条采样 (窗口左闭右开, 和库里对过账, 差的正好
+  是每天 23:59 的行), 少 0.05% 以内, 当总览看没问题, 要精确数就得自己查库。
+-->
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <title>流量总览</title>
+    <style>
+    :root {
+      --bg: #f6f7f9;
+      --card: #fff;
+      --fg: #18181b;
+      --muted: #71717a;
+      --border: #e4e4e7;
+      --accent: #2563eb;
+      --ok: #16a34a;
+      --warn: #d97706;
+      --bad: #dc2626;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #09090b;
+        --card: #18181b;
+        --fg: #fafafa;
+        --muted: #a1a1aa;
+        --border: #27272a;
+        --accent: #3b82f6;
+        --ok: #22c55e;
+        --warn: #f59e0b;
+        --bad: #ef4444;
+      }
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      padding: 24px;
+      background: var(--bg);
+      color: var(--fg);
+      font:
+        14px / 1.5 -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        "PingFang SC",
+        "Hiragino Sans GB",
+        "Microsoft YaHei",
+        sans-serif;
+    }
+    a {
+      color: var(--accent);
+    }
+    header {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    h1 {
+      font-size: 20px;
+      margin: 0;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+    .card .k {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .card .v {
+      font-size: 20px;
+      font-weight: 600;
+      margin-top: 2px;
+    }
+    .bar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    input[type="search"],
+    button,
+    select {
+      font: inherit;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--card);
+      color: var(--fg);
+    }
+    input[type="search"] {
+      min-width: 220px;
+    }
+    button {
+      cursor: pointer;
+    }
+    button:hover {
+      border-color: var(--accent);
+    }
+    label.chk {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .wrap {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: auto;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      white-space: nowrap;
+    }
+    th,
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+    th {
+      position: sticky;
+      top: 0;
+      background: var(--card);
+      cursor: pointer;
+      user-select: none;
+      font-weight: 600;
+      z-index: 1;
+    }
+    th .arrow {
+      color: var(--muted);
+      font-size: 11px;
+    }
+    tr.user {
+      cursor: pointer;
+    }
+    tr.user:hover {
+      background: color-mix(in srgb, var(--accent) 7%, transparent);
+    }
+    tr.user.open {
+      background: color-mix(in srgb, var(--accent) 5%, transparent);
+    }
+    td.num,
+    th.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .caret {
+      display: inline-block;
+      width: 12px;
+      color: var(--muted);
+    }
+    .usage {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .track {
+      width: 72px;
+      height: 6px;
+      border-radius: 3px;
+      background: var(--border);
+      overflow: hidden;
+    }
+    .fill {
+      height: 100%;
+      background: var(--ok);
+    }
+    .fill.warn {
+      background: var(--warn);
+    }
+    .fill.bad {
+      background: var(--bad);
+    }
+    .split {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .stack {
+      display: flex;
+      width: 90px;
+      height: 6px;
+      border-radius: 3px;
+      overflow: hidden;
+      background: var(--border);
+    }
+    .stack i {
+      height: 100%;
+    }
+    .tag {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid var(--border);
+    }
+    .tag.ok {
+      color: var(--ok);
+      border-color: color-mix(in srgb, var(--ok) 40%, transparent);
+    }
+    .tag.warn {
+      color: var(--warn);
+      border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+    }
+    .tag.bad {
+      color: var(--bad);
+      border-color: color-mix(in srgb, var(--bad) 40%, transparent);
+    }
+    .muted {
+      color: var(--muted);
+    }
+    /* 展开出来的明细: 一个用户的全部订阅, 塞在一个横跨整行的单元格里 */
+    td.detail {
+      padding: 0 12px 10px 34px;
+      background: color-mix(in srgb, var(--accent) 3%, transparent);
+    }
+    table.subs {
+      width: auto;
+      min-width: 70%;
+    }
+    table.subs th,
+    table.subs td {
+      border-bottom: 1px dashed var(--border);
+      padding: 6px 10px;
+      font-size: 13px;
+    }
+    table.subs th {
+      position: static;
+      background: none;
+      cursor: default;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    #msg {
+      padding: 16px;
+      color: var(--muted);
+    }
+    footer {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>流量总览</h1>
+      <span class="sub"
+        >按用户汇总，展开看每条订阅 · <a href="./">返回后台</a></span
+      >
+    </header>
+
+    <div class="cards" id="cards"></div>
+
+    <div class="bar">
+      <input type="search" id="q" placeholder="搜索用户或套餐">
+      <label class="chk">
+        <input type="checkbox" id="activeOnly">
+        仅看生效中
+      </label>
+      <label class="chk">
+        近期用量
+        <select id="window">
+          <option value="7">近 7 天</option>
+          <option value="3">近 3 天</option>
+          <option value="1">今天</option>
+          <option value="0">不统计</option>
+        </select>
+      </label>
+      <button id="toggleAll">展开全部</button>
+      <button id="reload">刷新</button>
+      <button id="csv">导出 CSV</button>
+      <span class="sub" id="count"></span>
+    </div>
+
+    <div class="wrap">
+      <table>
+        <thead>
+          <tr id="head"></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div id="msg">加载中…</div>
+    </div>
+
+    <footer>
+      已用 = 上行 +
+      下行，取自订阅行上的累计计数器，和用户前台、订阅接口同源；流量按 1024
+      进制显示。
+      <br>
+      「近 N 天」来自按天聚合的日志接口，日志按保留天数清理（本站 7
+      天），所以它和「已用」对不上是正常的； 那个接口每天还会漏掉 23:59
+      那一分钟的采样（上游的窗口是左闭右开），少的量在 0.05% 以内。
+      <br>
+      「生效中」指状态为进行中、未过期且未跑满流量。
+    </footer>
+
+    <script>
+    "use strict";
+    // 外层表: 一个用户一行。get 用来排序, render 用来出 HTML。
+    const COLUMNS = [
+      { key: "uid", label: "用户ID", num: true, get: (u) => u.id },
+      {
+        key: "user",
+        label: "用户",
+        get: (u) => u.name,
+        render: (u) =>
+          `<span class="caret">${open.has(u.id) ? "▾" : "▸"}</span>${esc(u.name)}`,
+      },
+      { key: "subs", label: "订阅数", num: true, get: (u) => u.subs.length },
+      {
+        key: "pct",
+        label: "使用率",
+        num: true,
+        get: (u) => u.pct ?? -1,
+        render: (u) => renderUsage(u.pct),
+      },
+      {
+        key: "used",
+        label: "已用合计",
+        num: true,
+        get: (u) => u.used,
+        render: (u) => fmtBytes(u.used),
+      },
+      {
+        key: "quota",
+        label: "配额合计",
+        num: true,
+        get: (u) => u.quota,
+        render: (u) =>
+          u.quota ? fmtBytes(u.quota) : '<span class="muted">不限</span>',
+      },
+      {
+        key: "recent",
+        label: "近期用量",
+        num: true,
+        get: (u) => u.recent,
+        render: (u) =>
+          u.recent ? fmtBytes(u.recent) : '<span class="muted">—</span>',
+      },
+      {
+        key: "dist",
+        label: "订阅分布",
+        get: (u) => u.subs.length,
+        render: renderDist,
+      },
+    ];
+
+    const COLORS = [
+      "#3b82f6",
+      "#f59e0b",
+      "#22c55e",
+      "#a855f7",
+      "#ec4899",
+      "#14b8a6",
+      "#ef4444",
+    ];
+    const STATUS = { 0: "未开始", 1: "进行中", 2: "已结束" };
+
+    let users = []; // [{id, name, subs:[...], used, quota, pct, recent}]
+    let recent = new Map(); // 订阅 id -> 窗口内字节数
+    let open = new Set(); // 展开着的用户 id
+    let sort = { key: "used", desc: true };
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) =>
+      String(s).replace(
+        /[&<>"]/g,
+        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]
+      );
+
+    function token() {
+      const m = document.cookie.match(/(?:^|;\s*)Authorization=([^;]*)/);
+      return m ? decodeURIComponent(m[1]) : "";
+    }
+
+    async function api(path, params) {
+      const url = new URL(path, location.origin);
+      Object.entries(params || {}).forEach(([k, v]) =>
+        url.searchParams.set(k, v)
+      );
+      const res = await fetch(url, { headers: { Authorization: token() } });
+      const body = await res.json().catch(() => ({}));
+      // 后端一律回 200, 真正的状态在 body.code 里; 40002/40004 是登录态问题。
+      if (body.code !== 200)
+        throw new Error(body.msg || `${path} 返回 ${res.status}`);
+      return body.data || {};
+    }
+
+    // 列表接口都是 page/size 分页, size 上限 100, 这里翻到底。
+    async function listAll(path, params) {
+      const out = [];
+      for (let page = 1; ; page++) {
+        const data = await api(path, { ...params, page, size: 100 });
+        const list = data.list || [];
+        out.push(...list);
+        if (list.length < 100 || (data.total && out.length >= data.total))
+          return out;
+      }
+    }
+
+    // 并发拉取, 限 6 条在飞, 免得几十个用户一起打满后端。
+    async function pool(items, limit, fn) {
+      const out = new Array(items.length);
+      let i = 0;
+      await Promise.all(
+        Array.from({ length: Math.min(limit, items.length) }, async () => {
+          while (i < items.length) {
+            const idx = i++;
+            out[idx] = await fn(items[idx], idx);
+          }
+        })
+      );
+      return out;
+    }
+
+    function fmtBytes(n) {
+      if (!n) return "0";
+      const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
+      let i = 0;
+      while (n >= 1024 && i < units.length - 1) {
+        n /= 1024;
+        i++;
+      }
+      return `${n.toFixed(i <= 1 ? 0 : n >= 100 ? 1 : 2)} ${units[i]}`;
+    }
+
+    function fmtDate(ms) {
+      if (!ms) return '<span class="muted">未设置</span>';
+      const d = new Date(ms);
+      // 2099 那种远期日期是本站「长期有效」的写法 (expire_time 留空会被判成已过期)。
+      if (d.getFullYear() >= 2099) return '<span class="muted">长期有效</span>';
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    }
+
+    function localDate(ms) {
+      const d = new Date(ms);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    }
+
+    function userName(u) {
+      const email = (u.auth_methods || []).find((a) => a.auth_type === "email");
+      if (email) return email.auth_identifier;
+      const other = (u.auth_methods || [])[0];
+      return other
+        ? `${other.auth_type}:${other.auth_identifier}`
+        : `用户 #${u.id}`;
+    }
+
+    function toSub(s, i) {
+      const used = (s.upload || 0) + (s.download || 0);
+      const total = s.traffic || 0;
+      const expire = s.expire_time || 0;
+      const exhausted = total > 0 && used >= total;
+      const expired = expire > 0 && expire < Date.now();
+      return {
+        id: s.id,
+        plan: s.subscribe?.name || `套餐 #${s.subscribe_id}`,
+        status: s.status,
+        expired,
+        exhausted,
+        active: s.status === 1 && !expired && !exhausted,
+        used,
+        total,
+        upload: s.upload || 0,
+        download: s.download || 0,
+        remain: total > 0 ? Math.max(0, total - used) : null,
+        pct: total > 0 ? used / total : null,
+        expire,
+        start: s.start_time || 0,
+        color: COLORS[i % COLORS.length],
+      };
+    }
+
+    function renderUsage(pct) {
+      if (pct === null || pct === undefined || pct < 0)
+        return '<span class="muted">—</span>';
+      const v = Math.min(100, pct * 100);
+      const cls = v >= 90 ? "bad" : v >= 70 ? "warn" : "";
+      return `<span class="usage"><span class="track"><span class="fill ${cls}" style="width:${v}%"></span></span>${v.toFixed(1)}%</span>`;
+    }
+
+    function renderStatus(s) {
+      if (s.status === 2) return '<span class="tag">已结束</span>';
+      if (s.expired) return '<span class="tag bad">已过期</span>';
+      if (s.exhausted) return '<span class="tag bad">流量耗尽</span>';
+      if (s.status === 0) return '<span class="tag">未开始</span>';
+      const left = s.expire
+        ? (s.expire - Date.now()) / 86_400_000
+        : Number.POSITIVE_INFINITY;
+      if (left <= 7)
+        return `<span class="tag warn">${Math.ceil(left)} 天后到期</span>`;
+      return `<span class="tag ok">${STATUS[s.status] || s.status}</span>`;
+    }
+
+    // 这个用户的流量是怎么摊在他各条订阅上的。
+    function renderDist(u) {
+      if (u.subs.length === 1) return '<span class="muted">单条订阅</span>';
+      if (!u.used) return '<span class="muted">—</span>';
+      const parts = [...u.subs]
+        .sort((a, b) => b.used - a.used)
+        .map((s) => ({ ...s, share: (s.used / u.used) * 100 }));
+      const bar = parts
+        .map((p) => `<i style="width:${p.share}%;background:${p.color}"></i>`)
+        .join("");
+      const text =
+        parts
+          .slice(0, 2)
+          .map((p) => `${esc(p.plan)} ${p.share.toFixed(0)}%`)
+          .join(" · ") + (parts.length > 2 ? ` · 等 ${parts.length} 条` : "");
+      const title = parts
+        .map((p) => `${p.plan} ${fmtBytes(p.used)}（${p.share.toFixed(1)}%）`)
+        .join("\n");
+      return `<span class="split" title="${esc(title)}"><span class="stack">${bar}</span>${text}</span>`;
+    }
+
+    function renderSubs(u) {
+      const head = [
+        "套餐",
+        "状态",
+        "使用率",
+        "已用",
+        "总量",
+        "剩余",
+        "上行",
+        "下行",
+        "近期用量",
+        "占本人",
+        "到期",
+      ];
+      const body = [...u.subs]
+        .sort((a, b) => b.used - a.used)
+        .map((s) => {
+          const r = recent.get(s.id) || 0;
+          const share = u.used
+            ? `${((s.used / u.used) * 100).toFixed(1)}%`
+            : "—";
+          return (
+            "<tr>" +
+            [
+              `<span class="split"><span class="dot" style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${s.color}"></span> ${esc(s.plan)}</span>`,
+              renderStatus(s),
+              renderUsage(s.pct),
+              fmtBytes(s.used),
+              s.total ? fmtBytes(s.total) : '<span class="muted">不限</span>',
+              s.remain === null
+                ? '<span class="muted">—</span>'
+                : fmtBytes(s.remain),
+              fmtBytes(s.upload),
+              fmtBytes(s.download),
+              r ? fmtBytes(r) : '<span class="muted">—</span>',
+              share,
+              fmtDate(s.expire),
+            ]
+              .map(
+                (c, i) =>
+                  `<td class="${i >= 2 && i <= 9 ? "num" : ""}">${c}</td>`
+              )
+              .join("") +
+            "</tr>"
+          );
+        })
+        .join("");
+      return `<table class="subs"><thead><tr>${head
+        .map((h, i) => `<th class="${i >= 2 && i <= 9 ? "num" : ""}">${h}</th>`)
+        .join("")}</tr></thead><tbody>${body}</tbody></table>`;
+    }
+
+    function visible() {
+      const q = $("q").value.trim().toLowerCase();
+      const onlyActive = $("activeOnly").checked;
+      return users
+        .map((u) => {
+          const subs = onlyActive ? u.subs.filter((s) => s.active) : u.subs;
+          if (!subs.length) return null;
+          if (
+            q &&
+            !`${u.name} ${u.id} ${subs.map((s) => s.plan).join(" ")}`
+              .toLowerCase()
+              .includes(q)
+          )
+            return null;
+          return subs === u.subs ? u : summarize(u.id, u.name, subs);
+        })
+        .filter(Boolean);
+    }
+
+    function summarize(id, name, subs) {
+      const used = subs.reduce((n, s) => n + s.used, 0);
+      const quota = subs.reduce((n, s) => n + s.total, 0);
+      return {
+        id,
+        name,
+        subs,
+        used,
+        quota,
+        pct: quota ? used / quota : null,
+        recent: subs.reduce((n, s) => n + (recent.get(s.id) || 0), 0),
+      };
+    }
+
+    function render() {
+      const list = visible().sort((a, b) => {
+        const col = COLUMNS.find((c) => c.key === sort.key);
+        const x = col.get(a),
+          y = col.get(b);
+        const cmp = typeof x === "string" ? x.localeCompare(y, "zh") : x - y;
+        return sort.desc ? -cmp : cmp;
+      });
+
+      $("head").innerHTML = COLUMNS.map(
+        (c) =>
+          `<th class="${c.num ? "num" : ""}" data-key="${c.key}">${c.label}` +
+          (sort.key === c.key
+            ? ` <span class="arrow">${sort.desc ? "▼" : "▲"}</span>`
+            : "") +
+          "</th>"
+      ).join("");
+      $("head")
+        .querySelectorAll("th")
+        .forEach(
+          (th) =>
+            (th.onclick = () => {
+              const key = th.dataset.key;
+              // 换一列排序时, 数字列默认从大到小, 文本列从小到大。
+              sort =
+                sort.key === key
+                  ? { key, desc: !sort.desc }
+                  : { key, desc: !!COLUMNS.find((c) => c.key === key).num };
+              render();
+            })
+        );
+
+      $("rows").innerHTML = list
+        .map((u) => {
+          const row =
+            `<tr class="user ${open.has(u.id) ? "open" : ""}" data-uid="${u.id}">` +
+            COLUMNS.map(
+              (c) =>
+                `<td class="${c.num ? "num" : ""}">${c.render ? c.render(u) : esc(c.get(u))}</td>`
+            ).join("") +
+            "</tr>";
+          return open.has(u.id)
+            ? row +
+                `<tr><td class="detail" colspan="${COLUMNS.length}">${renderSubs(u)}</td></tr>`
+            : row;
+        })
+        .join("");
+      $("rows")
+        .querySelectorAll("tr.user")
+        .forEach(
+          (tr) =>
+            (tr.onclick = () => {
+              const id = Number(tr.dataset.uid);
+              open.has(id) ? open.delete(id) : open.add(id);
+              render();
+            })
+        );
+
+      const subCount = list.reduce((n, u) => n + u.subs.length, 0);
+      $("count").textContent = `${list.length} 个用户 / ${subCount} 条订阅`;
+      $("toggleAll").textContent = open.size ? "收起全部" : "展开全部";
+      $("msg").style.display = list.length ? "none" : "block";
+      if (!list.length)
+        $("msg").textContent = users.length ? "没有匹配的用户" : "没有任何订阅";
+
+      const used = list.reduce((n, u) => n + u.used, 0);
+      const quota = list.reduce((n, u) => n + u.quota, 0);
+      const rec = list.reduce((n, u) => n + u.recent, 0);
+      const cards = [
+        ["用户数", list.length],
+        ["订阅数", subCount],
+        [
+          "生效中",
+          list.reduce((n, u) => n + u.subs.filter((s) => s.active).length, 0),
+        ],
+        ["已用合计", fmtBytes(used)],
+        ["配额合计", quota ? fmtBytes(quota) : "—"],
+        ["整体使用率", quota ? `${((used / quota) * 100).toFixed(1)}%` : "—"],
+        ["近期用量", rec ? fmtBytes(rec) : "—"],
+      ];
+      $("cards").innerHTML = cards
+        .map(
+          ([k, v]) =>
+            `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`
+        )
+        .join("");
+    }
+
+    function exportCsv() {
+      const head = [
+        "用户ID",
+        "用户",
+        "订阅ID",
+        "套餐",
+        "状态",
+        "已用(字节)",
+        "总量(字节)",
+        "剩余(字节)",
+        "上行(字节)",
+        "下行(字节)",
+        "使用率",
+        "近期用量(字节)",
+        "占本人",
+        "开始时间",
+        "到期时间",
+      ];
+      const cell = (v) => `"${String(v).replace(/"/g, '""')}"`;
+      const lines = [head.map(cell).join(",")];
+      for (const u of visible()) {
+        for (const s of u.subs) {
+          lines.push(
+            [
+              u.id,
+              u.name,
+              s.id,
+              s.plan,
+              s.status === 2
+                ? "已结束"
+                : s.expired
+                  ? "已过期"
+                  : s.exhausted
+                    ? "流量耗尽"
+                    : STATUS[s.status] || s.status,
+              s.used,
+              s.total,
+              s.remain === null ? "" : s.remain,
+              s.upload,
+              s.download,
+              s.pct === null ? "" : `${(s.pct * 100).toFixed(2)}%`,
+              recent.get(s.id) || 0,
+              u.used ? `${((s.used / u.used) * 100).toFixed(2)}%` : "",
+              s.start ? new Date(s.start).toLocaleString("zh-CN") : "",
+              s.expire ? new Date(s.expire).toLocaleString("zh-CN") : "",
+            ]
+              .map(cell)
+              .join(",")
+          );
+        }
+      }
+      // 带 BOM, 不然 Excel 打开中文是乱码。
+      const blob = new Blob([`\uFEFF${lines.join("\r\n")}`], {
+        type: "text/csv;charset=utf-8",
+      });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `traffic-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    // 按天聚合的日志接口: 一天一个请求, 一天也就十几行, 比按分钟的流水便宜得多。
+    async function loadRecent(days) {
+      recent = new Map();
+      if (!days) return;
+      for (let i = 0; i < days; i++) {
+        const date = localDate(Date.now() - i * 86_400_000);
+        for (const r of await listAll("/v1/admin/log/subscribe/traffic/list", {
+          date,
+        })) {
+          recent.set(
+            r.subscribe_id,
+            (recent.get(r.subscribe_id) || 0) +
+              (r.upload || 0) +
+              (r.download || 0)
+          );
+        }
+      }
+      users = users.map((u) => summarize(u.id, u.name, u.subs));
+    }
+
+    async function load() {
+      $("msg").style.display = "block";
+      $("msg").textContent = "加载中…";
+      $("rows").innerHTML = "";
+      if (!token()) {
+        $("msg").innerHTML =
+          '没有读到后台登录态，请先 <a href="./">登录管理后台</a>，再回到本页。';
+        return;
+      }
+      try {
+        const list = await listAll("/v1/admin/user/list");
+        $("msg").textContent = `已取到 ${list.length} 个用户，正在拉订阅…`;
+        const subs = await pool(list, 6, (u) =>
+          listAll("/v1/admin/user/subscribe", { user_id: u.id })
+        );
+        users = list
+          .map((u, i) =>
+            summarize(u.id, userName(u), (subs[i] || []).map(toSub))
+          )
+          .filter((u) => u.subs.length);
+        render();
+        $("msg").textContent = "正在统计近期用量…";
+        await loadRecent(Number($("window").value));
+        render();
+      } catch (e) {
+        $("msg").innerHTML = /token|登录|unauthorized|4000[234]/i.test(
+          e.message
+        )
+          ? '登录态失效了，请重新 <a href="./">登录管理后台</a>。'
+          : `加载失败：${esc(e.message)}`;
+      }
+    }
+
+    $("q").oninput = render;
+    $("activeOnly").onchange = render;
+    $("reload").onclick = load;
+    $("csv").onclick = exportCsv;
+    $("toggleAll").onclick = () => {
+      open = open.size ? new Set() : new Set(visible().map((u) => u.id));
+      render();
+    };
+    $("window").onchange = async () => {
+      try {
+        await loadRecent(Number($("window").value));
+      } catch (e) {
+        $("msg").textContent = `近期用量统计失败：${e.message}`;
+      }
+      render();
+    };
+    load();
+    </script>
+  </body>
+</html>

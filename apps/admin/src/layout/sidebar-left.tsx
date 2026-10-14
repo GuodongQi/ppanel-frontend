@@ -27,6 +27,29 @@ function hasChildren(obj: any): obj is { items: any[] } {
   );
 }
 
+function NavLink({
+  children,
+  className,
+  item,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  item: NavItem;
+}) {
+  if (item.external) {
+    return (
+      <a className={className} href={item.url}>
+        {children}
+      </a>
+    );
+  }
+  return (
+    <Link className={className} to={item.url as string}>
+      {children}
+    </Link>
+  );
+}
+
 export function SidebarLeft({
   ...props
 }: React.ComponentProps<typeof Sidebar>) {
@@ -65,7 +88,7 @@ export function SidebarLeft({
   };
 
   const isNavActive = (nav: NavItem): boolean =>
-    (nav.url ? isActiveUrl(nav.url) : false) ||
+    (!nav.external && nav.url ? isActiveUrl(nav.url) : false) ||
     (nav.activeUrls?.some(isActiveUrl) ?? false) ||
     (nav.items?.some(isNavActive) ?? false);
 
@@ -90,11 +113,11 @@ export function SidebarLeft({
         size="sm"
       >
         {"url" in nav && nav.url ? (
-          <Link to={nav.url as string}>
+          <NavLink item={nav}>
             {"icon" in nav && (nav as any).icon ? (
               <Icon className="size-4" icon={(nav as any).icon} />
             ) : null}
-          </Link>
+          </NavLink>
         ) : "icon" in nav && (nav as any).icon ? (
           <Icon className="size-4" icon={(nav as any).icon} />
         ) : null}
@@ -126,18 +149,18 @@ export function SidebarLeft({
           <ul className="p-1">
             {nav.items?.map((item: any) => (
               <li key={item.title}>
-                <Link
+                <NavLink
                   className={[
                     "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm",
                     isNavActive(item)
                       ? "bg-accent text-accent-foreground"
                       : "hover:bg-accent/60",
                   ].join(" ")}
-                  to={item.url}
+                  item={item}
                 >
                   {item.icon && <Icon className="size-4" icon={item.icon} />}
                   <span className="truncate">{item.title}</span>
-                </Link>
+                </NavLink>
               </li>
             ))}
           </ul>
@@ -225,7 +248,7 @@ export function SidebarLeft({
                                   size="sm"
                                   tooltip={item.title}
                                 >
-                                  <Link to={item.url}>
+                                  <NavLink item={item}>
                                     {item.icon && (
                                       <Icon
                                         className="size-4"
@@ -235,7 +258,7 @@ export function SidebarLeft({
                                     <span className="text-sm">
                                       {item.title}
                                     </span>
-                                  </Link>
+                                  </NavLink>
                                 </SidebarMenuButton>
                               </SidebarMenuItem>
                             ))}
@@ -263,7 +286,7 @@ export function SidebarLeft({
                             tooltip={nav.title}
                           >
                             {"url" in nav && (nav as any).url ? (
-                              <Link to={(nav as any).url}>
+                              <NavLink item={nav}>
                                 {"icon" in nav && (nav as any).icon ? (
                                   <Icon
                                     className="size-4"
@@ -271,7 +294,7 @@ export function SidebarLeft({
                                   />
                                 ) : null}
                                 <span className="text-sm">{nav.title}</span>
-                              </Link>
+                              </NavLink>
                             ) : (
                               <>
                                 {"icon" in nav && (nav as any).icon ? (

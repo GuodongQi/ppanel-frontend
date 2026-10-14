@@ -8,6 +8,7 @@ export interface NavItem {
   items?: NavItem[];
   defaultOpen?: boolean;
   activeUrls?: string[];
+  external?: boolean;
 }
 
 export function useNavs() {
@@ -88,6 +89,12 @@ export function useNavs() {
             title: t("User Management", "User Management"),
             url: "/dashboard/user",
             icon: "flat-color-icons:conference-call",
+          },
+          {
+            title: t("Traffic Overview", "Traffic Overview"),
+            url: "./traffic.html",
+            icon: "flat-color-icons:line-chart",
+            external: true,
           },
           {
             title: t("Ticket Management", "Ticket Management"),
