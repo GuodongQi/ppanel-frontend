@@ -55,6 +55,10 @@ import Renewal from "../../subscribe/renewal";
 import ResetTraffic from "../../subscribe/reset-traffic";
 import Unsubscribe from "../../subscribe/unsubscribe";
 
+// PPanel Server 1.20.2 runs its reset worker at 00:30, while reset_time is
+// the 00:00 cycle boundary. Display the actual scheduled refresh time.
+const TRAFFIC_RESET_WORKER_OFFSET_MS = 30 * 60 * 1000;
+
 const platforms: (keyof API.DownloadLink)[] = [
   "windows",
   "mac",
@@ -411,11 +415,13 @@ export default function Content() {
                     </li>
                     <li>
                       <span className="text-muted-foreground">
-                        {t("nextResetDays", "Next Reset Days")}
+                        {t("nextResetDays", "Next Traffic Refresh")}
                       </span>
                       <span className="font-semibold text-base tabular-nums sm:text-lg">
                         {item.reset_time
-                          ? formatDate(item.reset_time - 1000)
+                          ? formatDate(
+                              item.reset_time + TRAFFIC_RESET_WORKER_OFFSET_MS
+                            )
                           : t("noReset", "No Reset")}
                       </span>
                     </li>
