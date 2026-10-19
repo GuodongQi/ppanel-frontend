@@ -1,13 +1,18 @@
-name: Weekly Merge develop → main
+name: Sync upstream → main → custom
 
 on:
   schedule:
     - cron: '0 2 * * 1' # Every Monday 02:00 UTC
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  merge:
+  sync:
     runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.sync.outputs.release_tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -17,19 +22,60 @@ jobs:
 
       - name: Configure git
         run: |
-          git config user.name "web-ppanel"
-          git config user.email "web@ppanel.dev"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Sync main into develop first
+      - name: Sync upstream into main, then main into custom
+        id: sync
+        shell: bash
         run: |
-          git checkout develop
-          git pull origin develop
-          git merge origin/main --no-edit -X theirs
-          git push origin develop
+          set -euo pipefail
 
-      - name: Merge develop into main
-        run: |
-          git checkout main
-          git pull origin main
-          git merge origin/develop --no-edit -X theirs
+          git remote add upstream https://github.com/perfect-panel/frontend.git
+          git fetch origin \
+            main:refs/remotes/origin/main \
+            custom:refs/remotes/origin/custom \
+            --tags
+          git fetch upstream main:refs/remotes/upstream/main
+
+          git checkout -B main origin/main
+          git merge upstream/main --no-edit
           git push origin main
+
+          git checkout -B custom origin/custom
+          before="$(git rev-parse HEAD)"
+          git merge origin/main --no-edit
+
+          if [[ "$(git rev-parse HEAD)" == "$before" ]]; then
+            echo "release_tag=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git push origin custom
+
+          package_version="$(node -p "require('./package.json').version")"
+          base_version="$(printf '%s\n' "$package_version" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+          if [[ ! "$base_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Unable to derive release version from package.json: $package_version" >&2
+            exit 1
+          fi
+
+          revision=0
+          while IFS= read -r tag; do
+            candidate="${tag##*.}"
+            if [[ "$candidate" =~ ^[0-9]+$ ]] && (( candidate > revision )); then
+              revision="$candidate"
+            fi
+          done < <(git tag --list "custom-v${base_version}.*")
+
+          release_tag="custom-v${base_version}.$((revision + 1))"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: sync
+    if: needs.sync.outputs.release_tag != ''
+    uses: ./.github/workflows/custom-release.yml
+    with:
+      tag: ${{ needs.sync.outputs.release_tag }}
+    permissions:
+      contents: write
