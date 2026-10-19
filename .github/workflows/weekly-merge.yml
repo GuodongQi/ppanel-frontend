@@ -5,6 +5,9 @@ on:
     - cron: '0 2 * * 1' # Every Monday 02:00 UTC
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   merge:
     runs-on: ubuntu-latest
