@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - "custom-v*"
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       tag:
@@ -19,14 +24,14 @@ jobs:
     name: Build and publish custom frontend
     runs-on: ubuntu-latest
     env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout custom branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && 'custom' || github.ref }}
+          ref: ${{ inputs.tag && 'custom' || github.ref }}
 
       - name: Validate or create release tag
         shell: bash
@@ -77,6 +82,8 @@ jobs:
         run: bun run test
 
       - name: Build
+        env:
+          VITE_BUILD_ID: ${{ env.RELEASE_TAG }}
         run: bun run build
 
       - name: Package release assets
