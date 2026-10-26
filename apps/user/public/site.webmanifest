@@ -1,6 +1,6 @@
 {
-  "name": "PPanel",
-  "short_name": "PPanel",
+  "name": "Panel",
+  "short_name": "Panel",
   "icons": [
     {
       "src": "/pwa-192x192.png",
