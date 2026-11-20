@@ -112,6 +112,7 @@ export default function NodeForm(props: {
   });
 
   const serverId = form.watch("server_id");
+  const selectedPort = form.watch("port");
 
   const { servers, getAvailableProtocols } = useServer();
   const { tags } = useNode();
@@ -196,30 +197,28 @@ export default function NodeForm(props: {
     removeAutoFilledField(fieldName);
   };
 
-  function handleProtocolChange(nextProto?: ProtocolName | null) {
-    const protocol = (nextProto || "") as ProtocolName | "";
-    form.setValue("protocol", protocol);
+  function protocolOptionValue(protocol: string, port?: number | null) {
+    return `${protocol}:${port || ""}`;
+  }
 
-    if (!(protocol && serverId)) {
+  function handleProtocolChange(nextValue?: string | null) {
+    if (!nextValue) {
+      form.setValue("protocol", "");
       removeAutoFilledField("protocol");
       return;
     }
 
-    const currentValues = form.getValues();
-    const isPortAutoFilled = autoFilledFields.has("port");
-
+    const separator = nextValue.lastIndexOf(":");
+    const protocol = (
+      separator >= 0 ? nextValue.slice(0, separator) : nextValue
+    ) as ProtocolName;
+    const port = separator >= 0 ? Number(nextValue.slice(separator + 1)) : 0;
+    form.setValue("protocol", protocol);
     removeAutoFilledField("protocol");
 
-    if (!currentValues.port || currentValues.port === 0 || isPortAutoFilled) {
-      const protocolData = availableProtocols.find(
-        (p) => p.protocol === protocol
-      );
-
-      if (protocolData) {
-        const port = protocolData.port || 0;
-        form.setValue("port", port, { shouldDirty: false });
-        addAutoFilledField("port");
-      }
+    if (Number.isFinite(port) && port > 0) {
+      form.setValue("port", port, { shouldDirty: false });
+      addAutoFilledField("port");
     }
   }
 
@@ -283,25 +282,33 @@ export default function NodeForm(props: {
               <FormField
                 control={form.control}
                 name="protocol"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t("protocol", "Protocol")}</FormLabel>
-                    <FormControl>
-                      <Combobox<string, false>
-                        onChange={(v) =>
-                          handleProtocolChange((v as ProtocolName) || null)
-                        }
-                        options={availableProtocols.map((p) => ({
-                          value: p.protocol,
-                          label: `${p.protocol}${p.port ? ` (${p.port})` : ""}`,
-                        }))}
-                        placeholder={t("select_protocol", "Select protocol…")}
-                        value={field.value}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                render={({ field }) => {
+                  const selectedValue = field.value
+                    ? protocolOptionValue(field.value, selectedPort)
+                    : "";
+                  const hasExactOption = availableProtocols.some(
+                    (protocol) =>
+                      protocolOptionValue(protocol.protocol, protocol.port) ===
+                      selectedValue
+                  );
+                  return (
+                    <FormItem>
+                      <FormLabel>{t("protocol", "Protocol")}</FormLabel>
+                      <FormControl>
+                        <Combobox<string, false>
+                          onChange={(v) => handleProtocolChange(v || null)}
+                          options={availableProtocols.map((p) => ({
+                            value: protocolOptionValue(p.protocol, p.port),
+                            label: `${p.protocol}${p.port ? ` (${p.port})` : ""}`,
+                          }))}
+                          placeholder={t("select_protocol", "Select protocol…")}
+                          value={hasExactOption ? selectedValue : ""}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
               />
               <FormField
                 control={form.control}

@@ -116,6 +116,33 @@ describe("NW3 server form", () => {
     expect(initial).toEqual([nowhere, opaque]);
   });
 
+  it("keeps every stored instance of the same protocol", () => {
+    const values = getProtocolFormValues([
+      {
+        type: "vless",
+        enable: true,
+        port: 443,
+        security: "reality",
+        transport: "tcp",
+      },
+      {
+        type: "vless",
+        enable: true,
+        port: 2053,
+        security: "tls",
+        transport: "xhttp",
+      },
+    ]);
+    expect(
+      values
+        .filter((protocol) => protocol.type === "vless")
+        .map((protocol) => protocol.port)
+    ).toEqual([443, 2053]);
+    expect(
+      values.filter((protocol) => protocol.type === "hysteria2")
+    ).toHaveLength(1);
+  });
+
   it("does not duplicate Hysteria aliases or rewrite REALITY transports", () => {
     const initial = [
       { type: "hysteria", enable: false },

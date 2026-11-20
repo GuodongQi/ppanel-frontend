@@ -11,7 +11,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ServerForm from "./server-form";
 
 vi.mock("@/stores/node", () => ({
-  useNode: () => ({ isProtocolUsedInNodes: () => false }),
+  useNode: () => ({
+    isProtocolUsedInNodes: () => false,
+    isProtocolPortUsedInNodes: () => false,
+  }),
 }));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({

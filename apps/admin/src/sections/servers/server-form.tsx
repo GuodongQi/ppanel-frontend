@@ -478,6 +478,36 @@ function renderGroupCard(
   );
 }
 
+function ProtocolBadges({ current }: { current: Record<string, any> }) {
+  return (
+    <>
+      {current.transport && (
+        <Badge className="text-xs" variant="secondary">
+          {String(current.transport).toUpperCase()}
+        </Badge>
+      )}
+      {current.security && current.security !== "none" && (
+        <Badge className="text-xs" variant="outline">
+          {String(current.security).toUpperCase()}
+        </Badge>
+      )}
+      {current.port ? <Badge className="text-xs">{current.port}</Badge> : null}
+    </>
+  );
+}
+
+function protocolSummary(current: Record<string, any>) {
+  return [
+    current.port,
+    current.transport ? String(current.transport).toUpperCase() : "",
+    current.security && current.security !== "none"
+      ? String(current.security).toUpperCase()
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export default function ServerForm(props: {
   trigger: ReactNode;
   title: string;
@@ -490,7 +520,7 @@ export default function ServerForm(props: {
   const [open, setOpen] = useState(false);
   const [accordionValue, setAccordionValue] = useState("");
 
-  const { isProtocolUsedInNodes } = useNode();
+  const { isProtocolPortUsedInNodes, isProtocolUsedInNodes } = useNode();
   const PROTOCOL_FIELDS = useProtocolFields();
   const uneditableProtocols = getUneditableProtocols(initialValues?.protocols);
 
@@ -673,7 +703,7 @@ export default function ServerForm(props: {
 
   function handleOpenChange(nextOpen: boolean) {
     if (nextOpen && !initialValues) {
-      const full = PROTOCOLS.map((type) => getProtocolDefaultConfig(type));
+      const full = getProtocolFormValues();
       form.reset({
         name: "",
         address: "",
@@ -683,6 +713,102 @@ export default function ServerForm(props: {
       });
     }
     setOpen(nextOpen);
+  }
+
+  function protocolIndexes(type: ProtocolType) {
+    return ((protocolsValues || []) as Record<string, any>[]).flatMap(
+      (protocol, index) => (protocol?.type === type ? [index] : [])
+    );
+  }
+
+  function addProtocolInstance(type: ProtocolType) {
+    const list = [...(form.getValues("protocols") || [])];
+    let last = -1;
+    for (const [index, protocol] of list.entries()) {
+      if (protocol?.type === type) last = index;
+    }
+    list.splice(last >= 0 ? last + 1 : list.length, 0, {
+      ...getProtocolDefaultConfig(type),
+      enable: true,
+    });
+    form.setValue("protocols", list, { shouldDirty: true });
+    setAccordionValue(type);
+  }
+
+  function removeProtocolInstance(index: number) {
+    const list = [...(form.getValues("protocols") || [])];
+    const current = list[index];
+    if (!current) return;
+    if (list.filter((protocol) => protocol?.type === current.type).length <= 1)
+      return;
+    list.splice(index, 1);
+    form.setValue("protocols", list, { shouldDirty: true });
+    form.clearErrors(`protocols.${index}` as any);
+  }
+
+  function renderProtocolFields(
+    index: number,
+    current: Record<string, any>,
+    fields: FieldConfig[]
+  ) {
+    return (
+      <>
+        {renderGroupCard(
+          t("basic", "Basic Configuration"),
+          fields,
+          "basic",
+          control,
+          form,
+          index,
+          current
+        )}
+        {renderGroupCard(
+          t("obfs", "Obfuscation"),
+          fields,
+          "obfs",
+          control,
+          form,
+          index,
+          current
+        )}
+        {renderGroupCard(
+          t("transport", "Transport"),
+          fields,
+          "transport",
+          control,
+          form,
+          index,
+          current
+        )}
+        {renderGroupCard(
+          t("security", "Security"),
+          fields,
+          "security",
+          control,
+          form,
+          index,
+          current
+        )}
+        {renderGroupCard(
+          t("reality", "Reality"),
+          fields,
+          "reality",
+          control,
+          form,
+          index,
+          current
+        )}
+        {renderGroupCard(
+          t("encryption", "Encryption"),
+          fields,
+          "encryption",
+          control,
+          form,
+          index,
+          current
+        )}
+      </>
+    );
   }
 
   return (
@@ -696,7 +822,7 @@ export default function ServerForm(props: {
           <SheetDescription className="sr-only">
             {t(
               "protocol_configurations_desc",
-              "Enable and configure the required protocol types"
+              "The same protocol can be added more than once, distinguished by port"
             )}
           </SheetDescription>
         </SheetHeader>
@@ -780,7 +906,7 @@ export default function ServerForm(props: {
                 <p className="mt-1 text-muted-foreground text-xs">
                   {t(
                     "protocol_configurations_desc",
-                    "Enable and configure the required protocol types"
+                    "The same protocol can be added more than once, distinguished by port"
                   )}
                 </p>
               </div>
@@ -806,13 +932,27 @@ export default function ServerForm(props: {
                 value={accordionValue}
               >
                 {PROTOCOLS.map((type) => {
-                  const i = Math.max(0, PROTOCOLS.indexOf(type));
-                  const current = (protocolsValues[i] || {}) as Record<
-                    string,
-                    any
-                  >;
-                  const isEnabled = current?.enable;
+                  const instances = protocolIndexes(type).map((index) => ({
+                    index,
+                    current: (protocolsValues[index] || {}) as Record<
+                      string,
+                      any
+                    >,
+                  }));
+                  const primary = instances[0] ?? {
+                    index: 0,
+                    current: {} as Record<string, any>,
+                  };
+                  const single = instances.length <= 1;
+                  const enabledCount = instances.filter(
+                    ({ current }) => current.enable
+                  ).length;
                   const fields = PROTOCOL_FIELDS[type] || [];
+                  const typeLocked = Boolean(
+                    initialValues?.id &&
+                      primary.current.enable &&
+                      isProtocolUsedInNodes(initialValues.id, type)
+                  );
                   return (
                     <AccordionItem
                       className="mb-2 rounded-lg border"
@@ -824,83 +964,70 @@ export default function ServerForm(props: {
                           <AccordionTrigger className="px-4 py-3 hover:no-underline">
                             <div className="flex w-full items-center justify-between">
                               <div className="flex flex-col items-start gap-1">
-                                <div className="flex items-center gap-1">
+                                <div className="flex flex-wrap items-center gap-1">
                                   <span className="font-medium capitalize">
                                     {type}
                                   </span>
-                                  {current.transport && (
-                                    <Badge
-                                      className="text-xs"
-                                      variant="secondary"
-                                    >
-                                      {current.transport.toUpperCase()}
-                                    </Badge>
-                                  )}
-                                  {current.security &&
-                                    current.security !== "none" && (
-                                      <Badge
-                                        className="text-xs"
-                                        variant="outline"
-                                      >
-                                        {current.security.toUpperCase()}
-                                      </Badge>
-                                    )}
-                                  {current.port && (
-                                    <Badge className="text-xs">
-                                      {current.port}
-                                    </Badge>
+                                  {single ? (
+                                    <ProtocolBadges current={primary.current} />
+                                  ) : (
+                                    instances
+                                      .filter(({ current }) => current.enable)
+                                      .map(({ current, index }) => (
+                                        <Badge className="text-xs" key={index}>
+                                          {protocolSummary(current)}
+                                        </Badge>
+                                      ))
                                   )}
                                 </div>
-                                <div className="flex items-center gap-1">
-                                  <span
-                                    className={cn(
-                                      "text-xs",
-                                      isEnabled
-                                        ? "text-green-500"
-                                        : "text-muted-foreground"
-                                    )}
-                                  >
-                                    {isEnabled
+                                <span
+                                  className={cn(
+                                    "text-xs",
+                                    enabledCount > 0
+                                      ? "text-green-500"
+                                      : "text-muted-foreground"
+                                  )}
+                                >
+                                  {single
+                                    ? primary.current.enable
                                       ? t("enabled", "Enabled")
-                                      : t("disabled", "Disabled")}
-                                  </span>
-                                </div>
+                                      : t("disabled", "Disabled")
+                                    : `${enabledCount} ${t("enabled", "Enabled")}`}
+                                </span>
                               </div>
                             </div>
                           </AccordionTrigger>
                         </div>
-                        <Switch
-                          aria-label={t(
-                            "protocol_enabled",
-                            "Enable {{protocol}}",
-                            { protocol: type }
-                          )}
-                          checked={!!isEnabled}
-                          className="mr-2"
-                          disabled={Boolean(
-                            initialValues?.id &&
-                              isProtocolUsedInNodes(
-                                initialValues?.id || 0,
-                                type
-                              ) &&
-                              isEnabled
-                          )}
-                          onCheckedChange={(checked) => {
-                            form.setValue(`protocols.${i}.enable`, checked);
-                            if (checked) {
-                              setAccordionValue(type);
-                              return;
-                            }
-
-                            if (accordionValue === type) {
-                              setAccordionValue("");
-                            }
-                            form.clearErrors(`protocols.${i}` as any);
-                          }}
-                        />
+                        {single && (
+                          <Switch
+                            aria-label={t(
+                              "protocol_enabled",
+                              "Enable {{protocol}}",
+                              { protocol: type }
+                            )}
+                            checked={!!primary.current.enable}
+                            className="mr-2"
+                            disabled={typeLocked}
+                            onCheckedChange={(checked) => {
+                              form.setValue(
+                                `protocols.${primary.index}.enable`,
+                                checked
+                              );
+                              if (checked) {
+                                setAccordionValue(type);
+                                return;
+                              }
+                              if (accordionValue === type)
+                                setAccordionValue("");
+                              form.clearErrors(
+                                `protocols.${primary.index}` as any
+                              );
+                            }}
+                          />
+                        )}
                       </div>
                       <AccordionContent className="px-4 pt-0 pb-4">
-                        <div className="-mx-4 space-y-4 rounded-b-lg border-t px-4 pt-4">
+                        <div className="space-y-4">
                           {type === "nowhere" && (
                             <p className="text-muted-foreground text-xs">
                               {t(
@@ -909,60 +1036,90 @@ export default function ServerForm(props: {
                               )}
                             </p>
                           )}
-                          {renderGroupCard(
-                            t("basic", "Basic Configuration"),
-                            fields,
-                            "basic",
-                            control,
-                            form,
-                            i,
-                            current
-                          )}
-                          {renderGroupCard(
-                            t("obfs", "Obfuscation"),
-                            fields,
-                            "obfs",
-                            control,
-                            form,
-                            i,
-                            current
-                          )}
-                          {renderGroupCard(
-                            t("transport", "Transport"),
-                            fields,
-                            "transport",
-                            control,
-                            form,
-                            i,
-                            current
-                          )}
-                          {renderGroupCard(
-                            t("security", "Security"),
-                            fields,
-                            "security",
-                            control,
-                            form,
-                            i,
-                            current
-                          )}
-                          {renderGroupCard(
-                            t("reality", "Reality"),
-                            fields,
-                            "reality",
-                            control,
-                            form,
-                            i,
-                            current
-                          )}
-                          {renderGroupCard(
-                            t("encryption", "Encryption"),
-                            fields,
-                            "encryption",
-                            control,
-                            form,
-                            i,
-                            current
-                          )}
+                          {instances.map(({ index, current }) => {
+                            const portLocked = Boolean(
+                              initialValues?.id &&
+                                current.enable &&
+                                current.port &&
+                                isProtocolPortUsedInNodes(
+                                  initialValues.id,
+                                  type,
+                                  Number(current.port)
+                                )
+                            );
+                            return (
+                              <div
+                                className={
+                                  single
+                                    ? undefined
+                                    : "-mx-4 space-y-4 border-t px-4 pt-4"
+                                }
+                                key={`${type}-${index}`}
+                              >
+                                {!single && (
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                      <Switch
+                                        aria-label={t(
+                                          "protocol_enabled",
+                                          "Enable {{protocol}}",
+                                          {
+                                            protocol: current.port
+                                              ? `${type} ${current.port}`
+                                              : type,
+                                          }
+                                        )}
+                                        checked={!!current.enable}
+                                        disabled={portLocked}
+                                        onCheckedChange={(checked) => {
+                                          form.setValue(
+                                            `protocols.${index}.enable`,
+                                            checked
+                                          );
+                                          if (!checked) {
+                                            form.clearErrors(
+                                              `protocols.${index}` as any
+                                            );
+                                          }
+                                        }}
+                                      />
+                                      <span
+                                        className={cn(
+                                          "text-xs",
+                                          current.enable
+                                            ? "text-green-500"
+                                            : "text-muted-foreground"
+                                        )}
+                                      >
+                                        {current.enable
+                                          ? t("enabled", "Enabled")
+                                          : t("disabled", "Disabled")}
+                                      </span>
+                                    </div>
+                                    <Button
+                                      disabled={portLocked}
+                                      onClick={() =>
+                                        removeProtocolInstance(index)
+                                      }
+                                      size="sm"
+                                      type="button"
+                                      variant="outline"
+                                    >
+                                      {t("remove_protocol_instance", "Remove")}
+                                    </Button>
+                                  </div>
+                                )}
+                                {renderProtocolFields(index, current, fields)}
+                              </div>
+                            );
+                          })}
+                          <Button
+                            onClick={() => addProtocolInstance(type)}
+                            type="button"
+                            variant="outline"
+                          >
+                            {t("add_protocol_instance", "Add another")}
+                          </Button>
                         </div>
                       </AccordionContent>
                     </AccordionItem>

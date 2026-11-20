@@ -55,68 +55,76 @@ function normalizeNowhereNetwork(value: unknown) {
   return network === "quic" ? "udp" : network;
 }
 
+function matchesProtocolType(protocol: ProtocolValue, type: ProtocolType) {
+  return (
+    protocol.type === type ||
+    (type === "hysteria2" && protocol.type === "hysteria")
+  );
+}
+
+function mergeProtocol(type: ProtocolType, existingProtocol: ProtocolValue) {
+  const defaultConfig = getProtocolDefaultConfig(type);
+  const merged = {
+    ...defaultConfig,
+    ...existingProtocol,
+    type,
+    transport:
+      existingProtocol.transport === "websocket"
+        ? "ws"
+        : existingProtocol.transport,
+    plugin: existingProtocol.plugin || "none",
+    multiplex: normalizeMultiplexValue(
+      type,
+      existingProtocol.multiplex,
+      defaultConfig.multiplex
+    ),
+  };
+  if (type === "nowhere") {
+    const version = Number(existingProtocol.version ?? 0);
+    merged.version = version === 0 || version === 1 ? 3 : version;
+    if (version === 0 || version === 1 || !existingProtocol.alpn?.length)
+      merged.alpn = ["nw3"];
+    merged.obfs =
+      String(existingProtocol.obfs || "morph")
+        .trim()
+        .toLowerCase() || "morph";
+    merged.network = normalizeNowhereNetwork(existingProtocol.network);
+  }
+  // Only TLS-only protocols are coerced. REALITY settings remain intact.
+  if (["hysteria2", "tuic", "naive", "nowhere"].includes(type)) {
+    merged.security = "tls";
+    if (!merged.cert_mode || merged.cert_mode === "none") {
+      merged.cert_mode = "self";
+    }
+  }
+  if (
+    ["anytls", "trojan"].includes(type) &&
+    !["tls", "reality"].includes(String(merged.security))
+  ) {
+    merged.security = "tls";
+    merged.cert_mode = "self";
+  }
+  if (merged.security === "reality") {
+    // Never overwrite a stored transport: REALITY rides any stream
+    // transport on vless, and rewriting it here made every edit — even
+    // a rename — silently destroy an xhttp node's configuration.
+    if (!merged.transport) {
+      merged.transport = "tcp";
+    }
+    merged.cert_mode = "none";
+  }
+  return merged;
+}
+
 export function getProtocolFormValues(
   initialProtocols: readonly ProtocolValue[] = []
 ) {
-  return protocols.map((type) => {
-    const existingProtocol = initialProtocols.find(
-      (protocol) =>
-        protocol.type === type ||
-        (type === "hysteria2" && protocol.type === "hysteria")
+  return protocols.flatMap((type) => {
+    const existing = initialProtocols.filter((protocol) =>
+      matchesProtocolType(protocol, type)
     );
-    const defaultConfig = getProtocolDefaultConfig(type);
-    if (!existingProtocol) return defaultConfig;
-
-    const merged = {
-      ...defaultConfig,
-      ...existingProtocol,
-      type,
-      transport:
-        existingProtocol.transport === "websocket"
-          ? "ws"
-          : existingProtocol.transport,
-      plugin: existingProtocol.plugin || "none",
-      multiplex: normalizeMultiplexValue(
-        type,
-        existingProtocol.multiplex,
-        defaultConfig.multiplex
-      ),
-    };
-    if (type === "nowhere") {
-      const version = Number(existingProtocol.version ?? 0);
-      merged.version = version === 0 || version === 1 ? 3 : version;
-      if (version === 0 || version === 1 || !existingProtocol.alpn?.length)
-        merged.alpn = ["nw3"];
-      merged.obfs =
-        String(existingProtocol.obfs || "morph")
-          .trim()
-          .toLowerCase() || "morph";
-      merged.network = normalizeNowhereNetwork(existingProtocol.network);
-    }
-    // Only TLS-only protocols are coerced. REALITY settings remain intact.
-    if (["hysteria2", "tuic", "naive", "nowhere"].includes(type)) {
-      merged.security = "tls";
-      if (!merged.cert_mode || merged.cert_mode === "none") {
-        merged.cert_mode = "self";
-      }
-    }
-    if (
-      ["anytls", "trojan"].includes(type) &&
-      !["tls", "reality"].includes(String(merged.security))
-    ) {
-      merged.security = "tls";
-      merged.cert_mode = "self";
-    }
-    if (merged.security === "reality") {
-      // Never overwrite a stored transport: REALITY rides any stream
-      // transport on vless, and rewriting it here made every edit — even
-      // a rename — silently destroy an xhttp node's configuration.
-      if (!merged.transport) {
-        merged.transport = "tcp";
-      }
-      merged.cert_mode = "none";
-    }
-    return merged;
+    if (existing.length === 0) return [getProtocolDefaultConfig(type)];
+    return existing.map((protocol) => mergeProtocol(type, protocol));
   });
 }
 

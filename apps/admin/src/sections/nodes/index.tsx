@@ -173,7 +173,7 @@ export default function Nodes() {
           id: "protocol",
           header: ` ${t("protocol", "Protocol")}:${t("port", "Port")}`,
           cell: ({ row }) =>
-            `${row.original.protocol}:${getProtocolPort(row.original.server_id, row.original.protocol)}`,
+            `${row.original.protocol}:${getProtocolPort(row.original.server_id, row.original.protocol, row.original.port)}`,
         },
         {
           accessorKey: "tags",
