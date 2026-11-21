@@ -50,7 +50,7 @@ export default function RegisterForm({
       invite: invite.forced_invite ? z.string().min(1) : z.string().nullish(),
       cf_token:
         verify.enable_register_verify && verify.turnstile_site_key
-          ? z.string()
+          ? z.string().min(1)
           : z.string().nullish(),
     })
     .superRefine(({ password, repeat_password }, ctx) => {
@@ -180,6 +180,24 @@ export default function RegisterForm({
                 </FormItem>
               )}
             />
+            {verify.enable_register_verify && (
+              <FormField
+                control={form.control}
+                name="cf_token"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <CloudFlareTurnstile
+                        id="register"
+                        {...field}
+                        ref={turnstile}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
             <FormField
               control={form.control}
               name="code"
@@ -196,12 +214,18 @@ export default function RegisterForm({
                       />
 
                       <SendCode
+                        needsToken={Boolean(
+                          verify.enable_register_verify &&
+                            verify.turnstile_site_key
+                        )}
+                        onSent={() => form.setValue("cf_token", "")}
                         params={{
                           telephone: form.watch("telephone"),
                           telephone_area_code: form.watch(
                             "telephone_area_code"
                           ),
                           type: 1,
+                          cf_token: form.watch("cf_token") || undefined,
                         }}
                         type="phone"
                       />
@@ -231,24 +255,6 @@ export default function RegisterForm({
                 </FormItem>
               )}
             />
-            {verify.enable_register_verify && (
-              <FormField
-                control={form.control}
-                name="cf_token"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <CloudFlareTurnstile
-                        id="register"
-                        {...field}
-                        ref={turnstile}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
             <Button disabled={loading} type="submit">
               {loading && <Icon className="animate-spin" icon="mdi:loading" />}
               {t("register.title", "Register")}
