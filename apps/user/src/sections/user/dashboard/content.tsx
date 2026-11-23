@@ -511,7 +511,7 @@ export default function Content() {
                             </div>
                           </AccordionTrigger>
                           <AccordionContent>
-                            <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
                               {applications
                                 ?.filter(
                                   (application) =>
@@ -587,7 +587,7 @@ export default function Content() {
 
                                   return (
                                     <div
-                                      className="flex size-full flex-col items-center justify-between gap-2 text-muted-foreground text-xs"
+                                      className="flex size-full min-w-0 flex-col items-center justify-between gap-3 text-muted-foreground text-xs"
                                       key={application.name}
                                     >
                                       <span>{application.name}</span>
@@ -601,15 +601,11 @@ export default function Content() {
                                           width={64}
                                         />
                                       )}
-                                      <div className="flex">
+                                      <div className="flex w-full flex-col gap-2">
                                         {downloadUrl && (
                                           <Button
                                             asChild
-                                            className={
-                                              application.scheme
-                                                ? "rounded-r-none px-1.5"
-                                                : "px-1.5"
-                                            }
+                                            className="h-auto w-full whitespace-normal px-3 py-2 text-center text-xs leading-4"
                                             size="sm"
                                             variant="secondary"
                                           >
@@ -628,11 +624,7 @@ export default function Content() {
 
                                         {application.scheme && (
                                           <Button
-                                            className={
-                                              downloadUrl
-                                                ? "rounded-l-none p-2"
-                                                : "p-2"
-                                            }
+                                            className="h-auto w-full whitespace-normal px-3 py-2 text-center text-xs leading-4"
                                             onClick={handleCopy}
                                             size="sm"
                                             type="button"
