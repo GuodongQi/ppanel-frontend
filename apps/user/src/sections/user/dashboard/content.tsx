@@ -646,12 +646,15 @@ export default function Content() {
                                 })}
                               <div className="hidden size-full flex-col items-center justify-between gap-2 text-muted-foreground text-sm lg:flex">
                                 <span>{t("qrCode", "QR Code")}</span>
-                                <QRCodeCanvas
-                                  bgColor="transparent"
-                                  fgColor="rgb(59, 130, 246)"
-                                  size={80}
-                                  value={url}
-                                />
+                                <div className="rounded-lg bg-white p-2">
+                                  <QRCodeCanvas
+                                    bgColor="#ffffff"
+                                    fgColor="#000000"
+                                    includeMargin
+                                    size={112}
+                                    value={url}
+                                  />
+                                </div>
                                 <span className="text-center">
                                   {t("scanToSubscribe", "Scan to Subscribe")}
                                 </span>
