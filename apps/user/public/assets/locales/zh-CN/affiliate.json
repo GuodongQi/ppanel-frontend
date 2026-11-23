@@ -2,6 +2,7 @@
   "availableCommission": "可提现佣金",
   "commissionInfo": "佣金信息",
   "commissionRate": "佣金比例",
+  "copyFailed": "复制失败",
   "copyInviteLink": "复制邀请链接",
   "copySuccess": "复制成功",
   "invalidWithdrawAmount": "请输入有效金额",

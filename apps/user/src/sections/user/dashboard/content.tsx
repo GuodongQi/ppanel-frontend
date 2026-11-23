@@ -40,15 +40,16 @@ import { differenceInDays, formatDate } from "@workspace/ui/utils/formatting";
 import { isBrowser } from "@workspace/ui/utils/index";
 import { QRCodeCanvas } from "qrcode.react";
 import React, { useState } from "react";
-import CopyToClipboard from "react-copy-to-clipboard";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Display } from "@/components/display";
 import { useGlobalStore } from "@/stores/global";
+import { copyText } from "@/utils/clipboard";
 import { getPlatform } from "@/utils/common";
 import {
   getSubscriptionUrlAvailability,
   isExpiredSubscription,
+  shouldOpenClientScheme,
 } from "@/utils/subscription";
 import Subscribe from "../../subscribe";
 import Renewal from "../../subscribe/renewal";
@@ -72,6 +73,20 @@ export default function Content() {
   const { t } = useTranslation("dashboard");
   const { commonError, getAppSubLink, getUserSubscribe, isLoadingCommon } =
     useGlobalStore();
+
+  const copySubscriptionLink = (url: string) => {
+    copyText(url)
+      .then((copied) => {
+        if (copied) {
+          toast.success(t("copySuccess", "Copy Success"));
+          return;
+        }
+        toast.error(t("copyFailed", "Copy failed"));
+      })
+      .catch(() => {
+        toast.error(t("copyFailed", "Copy failed"));
+      });
+  };
 
   const [protocol, setProtocol] = useState("");
 
@@ -313,7 +328,10 @@ export default function Content() {
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button size="sm" variant="destructive">
-                                {t("resetSubscription", "Reset Subscription")}
+                                {t(
+                                  "resetSubscription",
+                                  "Reset Subscription Link"
+                                )}
                               </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
@@ -364,7 +382,7 @@ export default function Content() {
                                 >
                                   {t(
                                     "confirmResetSubscription",
-                                    "Confirm Reset Subscription"
+                                    "Confirm Reset Link"
                                   )}
                                 </AlertDialogAction>
                               </AlertDialogFooter>
@@ -476,27 +494,20 @@ export default function Content() {
                                 {index + 1}
                               </CardTitle>
 
-                              <CopyToClipboard
-                                onCopy={(_, result) => {
-                                  if (result) {
-                                    toast.success(
-                                      t("copySuccess", "Copy Success")
-                                    );
-                                  }
+                              <span
+                                className="mr-4 flex cursor-pointer rounded p-2 text-primary text-sm hover:bg-accent"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  copySubscriptionLink(url);
                                 }}
-                                text={url}
                               >
-                                <span
-                                  className="mr-4 flex cursor-pointer rounded p-2 text-primary text-sm hover:bg-accent"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <Icon
-                                    className="mr-2 size-5"
-                                    icon="uil:copy"
-                                  />
-                                  {t("copy", "Copy")}
-                                </span>
-                              </CopyToClipboard>
+                                <Icon className="mr-2 size-5" icon="uil:copy" />
+                                {t(
+                                  "copySubscription",
+                                  "Copy Subscription Link"
+                                )}
+                              </span>
                             </div>
                           </AccordionTrigger>
                           <AccordionContent>
@@ -510,64 +521,68 @@ export default function Content() {
                                   const downloadUrl =
                                     application.download_link?.[platform];
 
-                                  // Check if scheme template outputs the raw URL (which would be http(s)://)
-                                  // rather than the scheme prefix itself
-                                  const isHttpLink =
-                                    application.scheme?.startsWith("${url}");
+                                  const isHttpLink = application.scheme
+                                    ?.trim()
+                                    .startsWith("${url}");
 
-                                  const handleCopy = (
-                                    _: string,
-                                    result: boolean
+                                  const handleCopy = async (
+                                    event: React.MouseEvent
                                   ) => {
-                                    if (result) {
-                                      const href = getAppSubLink(
-                                        url,
-                                        application.scheme
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    const copied = await copyText(url);
+                                    if (!copied) {
+                                      toast.error(
+                                        t("copyFailed", "Copy failed")
                                       );
-
-                                      // Check if the generated link is a plain HTTP/HTTPS URL
-                                      // If so, only copy to clipboard without triggering redirect
-                                      const isPlainHttpUrl = /^https?:/i.test(
-                                        href
-                                      );
-
-                                      if (isPlainHttpUrl) {
-                                        toast.success(
-                                          t("copySuccess", "Copy Success")
-                                        );
-                                        return;
-                                      }
-
-                                      const showSuccessMessage = () => {
-                                        toast.success(
-                                          <>
-                                            <p>
-                                              {t("copySuccess", "Copy Success")}
-                                            </p>
-                                            <br />
-                                            <p>
-                                              {t(
-                                                "manualImportMessage",
-                                                "Please import manually"
-                                              )}
-                                            </p>
-                                          </>
-                                        );
-                                      };
-
-                                      if (isBrowser() && href && !isHttpLink) {
-                                        window.location.href = href;
-                                        const checkRedirect = setTimeout(() => {
-                                          if (window.location.href !== href) {
-                                            showSuccessMessage();
-                                          }
-                                          clearTimeout(checkRedirect);
-                                        }, 1000);
-                                        return;
-                                      }
-
-                                      showSuccessMessage();
+                                      return;
                                     }
+
+                                    const href = getAppSubLink(
+                                      url,
+                                      application.scheme
+                                    );
+                                    const showManualImport = () => {
+                                      toast.success(
+                                        <>
+                                          <p>
+                                            {t("copySuccess", "Copy Success")}
+                                          </p>
+                                          <br />
+                                          <p>
+                                            {t(
+                                              "manualImportMessage",
+                                              "Subscription link copied. Add it manually in the app."
+                                            )}
+                                          </p>
+                                        </>
+                                      );
+                                    };
+
+                                    if (
+                                      isBrowser() &&
+                                      shouldOpenClientScheme(
+                                        href,
+                                        application.scheme
+                                      )
+                                    ) {
+                                      window.location.href = href;
+                                      const checkRedirect = setTimeout(() => {
+                                        if (window.location.href !== href) {
+                                          showManualImport();
+                                        }
+                                        clearTimeout(checkRedirect);
+                                      }, 1000);
+                                      return;
+                                    }
+
+                                    if (isHttpLink) {
+                                      toast.success(
+                                        t("copySuccess", "Copy Success")
+                                      );
+                                      return;
+                                    }
+                                    showManualImport();
                                   };
 
                                   return (
@@ -603,32 +618,35 @@ export default function Content() {
                                               rel="noopener noreferrer"
                                               target="_blank"
                                             >
-                                              {t("download", "Download")}
+                                              {t(
+                                                "downloadClient",
+                                                "Download Client"
+                                              )}
                                             </a>
                                           </Button>
                                         )}
 
                                         {application.scheme && (
-                                          <CopyToClipboard
-                                            onCopy={handleCopy}
-                                            text={url}
+                                          <Button
+                                            className={
+                                              downloadUrl
+                                                ? "rounded-l-none p-2"
+                                                : "p-2"
+                                            }
+                                            onClick={handleCopy}
+                                            size="sm"
+                                            type="button"
                                           >
-                                            <Button
-                                              className={
-                                                downloadUrl
-                                                  ? "rounded-l-none p-2"
-                                                  : "p-2"
-                                              }
-                                              size="sm"
-                                            >
-                                              {isHttpLink
-                                                ? t(
-                                                    "clickToCopy",
-                                                    "Click to Copy"
-                                                  )
-                                                : t("import", "Import")}
-                                            </Button>
-                                          </CopyToClipboard>
+                                            {isHttpLink
+                                              ? t(
+                                                  "copySubscription",
+                                                  "Copy Subscription Link"
+                                                )
+                                              : t(
+                                                  "import",
+                                                  "Import Subscription"
+                                                )}
+                                          </Button>
                                         )}
                                       </div>
                                     </div>

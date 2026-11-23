@@ -1,7 +1,9 @@
 {
   "accountBalance": "Account Balance",
   "commission": "Commission",
-  "copySuccess": "Copy Success",
+  "copyFailed": "Copy failed",
+  "copyInviteLink": "Copy Invite Link",
+  "copySuccess": "Invite link copied",
   "giftAmount": "Gift Amount",
   "inviteCode": "Invite Code"
 }

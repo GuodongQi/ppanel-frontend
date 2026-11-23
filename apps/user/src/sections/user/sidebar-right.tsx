@@ -8,14 +8,13 @@ import {
   CardTitle,
 } from "@workspace/ui/components/card";
 import { Sidebar, SidebarContent } from "@workspace/ui/components/sidebar";
-import { Icon } from "@workspace/ui/composed/icon";
 import { isBrowser } from "@workspace/ui/utils/index";
-import CopyToClipboard from "react-copy-to-clipboard";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Display } from "@/components/display";
 import Recharge from "@/sections/subscribe/recharge";
 import { useGlobalStore } from "@/stores/global";
+import { copyText } from "@/utils/clipboard";
 
 export function SidebarRight({
   ...props
@@ -63,21 +62,28 @@ export function SidebarRight({
               <CardTitle className="font-medium text-sm">
                 {t("inviteCode", "Invite Code")}
               </CardTitle>
-              <CopyToClipboard
-                onCopy={(_text: string, result: boolean) => {
-                  if (result) {
-                    toast.success(t("copySuccess", "Copy Success"));
-                  }
+              <Button
+                className="h-7 px-2"
+                onClick={() => {
+                  const inviteLink = `${isBrowser() ? location.origin : ""}/#/auth?invite=${user.refer_code}`;
+                  copyText(inviteLink)
+                    .then((copied) => {
+                      if (copied) {
+                        toast.success(t("copySuccess", "Invite link copied"));
+                        return;
+                      }
+                      toast.error(t("copyFailed", "Copy failed"));
+                    })
+                    .catch(() => {
+                      toast.error(t("copyFailed", "Copy failed"));
+                    });
                 }}
-                text={`${isBrowser() && location?.origin}/#/auth?invite=${user?.refer_code}`}
+                size="sm"
+                type="button"
+                variant="ghost"
               >
-                <Button className="size-5 p-0" variant="ghost">
-                  <Icon
-                    className="text-2xl text-primary"
-                    icon="mdi:content-copy"
-                  />
-                </Button>
-              </CopyToClipboard>
+                {t("copyInviteLink", "Copy Invite Link")}
+              </Button>
             </CardHeader>
             <CardContent className="truncate p-3 font-bold">
               {user?.refer_code}

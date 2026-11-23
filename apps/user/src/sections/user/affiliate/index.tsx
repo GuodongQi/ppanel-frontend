@@ -29,11 +29,11 @@ import {
 import { formatDate } from "@workspace/ui/utils/formatting";
 import { Copy } from "lucide-react";
 import { type FormEvent, useState } from "react";
-import { CopyToClipboard } from "react-copy-to-clipboard";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Display } from "@/components/display";
 import { useGlobalStore } from "@/stores/global";
+import { copyText } from "@/utils/clipboard";
 
 export default function Affiliate() {
   const { t } = useTranslation("affiliate");
@@ -195,19 +195,29 @@ export default function Affiliate() {
             <code className="rounded bg-muted px-2 py-1 font-bold text-2xl">
               {user?.refer_code}
             </code>
-            <CopyToClipboard
-              onCopy={(_, result) => {
-                if (result) {
-                  toast.success(t("copySuccess", "Copy Success"));
-                }
+            <Button
+              className="gap-2"
+              onClick={() => {
+                const inviteLink = `${location.origin}/#/auth?invite=${user?.refer_code}`;
+                copyText(inviteLink)
+                  .then((copied) => {
+                    if (copied) {
+                      toast.success(t("copySuccess", "Copy Success"));
+                      return;
+                    }
+                    toast.error(t("copyFailed", "Copy failed"));
+                  })
+                  .catch(() => {
+                    toast.error(t("copyFailed", "Copy failed"));
+                  });
               }}
-              text={`${location?.origin}/#/auth?invite=${user?.refer_code}`}
+              size="sm"
+              type="button"
+              variant="secondary"
             >
-              <Button className="gap-2" size="sm" variant="secondary">
-                <Copy className="h-4 w-4" />
-                {t("copyInviteLink", "Copy Invite Link")}
-              </Button>
-            </CopyToClipboard>
+              <Copy className="h-4 w-4" />
+              {t("copyInviteLink", "Copy Invite Link")}
+            </Button>
           </div>
         </CardContent>
       </Card>

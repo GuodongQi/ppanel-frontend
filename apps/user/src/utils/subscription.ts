@@ -59,6 +59,16 @@ export function hasSubscriptionVariables(content: string): boolean {
   return /{{subscribe_url(?:_encoded|_base64|_qx)?}}/.test(content);
 }
 
+// A custom scheme opens the client app. An http(s) result is the subscription
+// document itself; navigating to it makes mobile Safari render subscribe.txt.
+export function shouldOpenClientScheme(href: string, scheme?: string): boolean {
+  const target = href.trim();
+  if (!target || /^https?:/i.test(target)) {
+    return false;
+  }
+  return !scheme?.trim().startsWith("${url}");
+}
+
 export function buildUserSubscribeUrls({
   origin,
   short,

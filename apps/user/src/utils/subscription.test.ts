@@ -4,6 +4,7 @@ import {
   getSubscriptionUrlAvailability,
   hasSubscriptionVariables,
   isExpiredSubscription,
+  shouldOpenClientScheme,
 } from "./subscription";
 
 describe("buildUserSubscribeUrls", () => {
@@ -122,5 +123,31 @@ describe("isExpiredSubscription", () => {
 
   it("does not treat an active subscription as expired", () => {
     expect(isExpiredSubscription({ expire_time: 1, status: 1 })).toBe(false);
+  });
+});
+
+describe("shouldOpenClientScheme", () => {
+  it("does not navigate to an http subscription document", () => {
+    expect(
+      shouldOpenClientScheme(
+        "https://lyqppisn2an040y1.52zju.cn/subscribe?token=secret",
+        "${url}"
+      )
+    ).toBe(false);
+    expect(
+      shouldOpenClientScheme(
+        " https://lyqppisn2an040y1.52zju.cn/subscribe?token=secret",
+        " ${url}"
+      )
+    ).toBe(false);
+  });
+
+  it("opens a client scheme", () => {
+    expect(
+      shouldOpenClientScheme(
+        "v2box://install-sub?url=https://example/subscribe&name=I%20am%20Free",
+        "v2box://install-sub?url=${url}&name=${name}"
+      )
+    ).toBe(true);
   });
 });
