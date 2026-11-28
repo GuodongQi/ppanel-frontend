@@ -82,7 +82,7 @@ export default function RealityScan() {
   const servers = useQuery({
     queryKey: ["reality-scan-servers"],
     queryFn: async () => {
-      const { data } = await getServerList({ page: 1, size: 200 });
+      const { data } = await getServerList({ page: 1, size: 100 });
       return data.data?.list ?? [];
     },
   });
