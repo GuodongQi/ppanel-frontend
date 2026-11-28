@@ -18,6 +18,19 @@ export interface RealityScanConfig {
   threads: number;
   timeout_seconds: number;
   max_cert_bytes: number;
+  geoip_download: boolean;
+  geoip_city_url: string;
+  geoip_city_sha256: string;
+  geoip_asn_url: string;
+  geoip_asn_sha256: string;
+}
+
+export interface RealityScanGeoStatus {
+  city_ready: boolean;
+  asn_ready: boolean;
+  path?: string;
+  asn_path?: string;
+  error?: string;
 }
 
 export interface RealityScanServerConfig {
@@ -86,6 +99,7 @@ export interface RealityScanEduSearch {
 export interface RealityScanView {
   config: RealityScanConfig;
   report: RealityScanReport;
+  geoip?: RealityScanGeoStatus;
 }
 
 export async function getRealityScan() {

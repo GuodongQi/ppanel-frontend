@@ -32,6 +32,7 @@ import { toast } from "sonner";
 import {
   getRealityScan,
   type RealityScanConfig,
+  type RealityScanGeoStatus,
   type RealityScanResult,
   type RealityScanServerConfig,
   type RealityScanSwitch,
@@ -56,6 +57,11 @@ const emptyConfig: RealityScanConfig = {
   threads: 8,
   timeout_seconds: 5,
   max_cert_bytes: 8192,
+  geoip_download: false,
+  geoip_city_url: "",
+  geoip_city_sha256: "",
+  geoip_asn_url: "",
+  geoip_asn_sha256: "",
 };
 
 function formatWhen(value?: string) {
@@ -95,6 +101,7 @@ export default function RealityScan() {
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [geoip, setGeoip] = useState<RealityScanGeoStatus>();
 
   const scan = useQuery({
     queryKey: ["reality-scan"],
@@ -122,6 +129,7 @@ export default function RealityScan() {
       servers: scan.data.config.servers ?? [],
     });
     setHydrated(true);
+    setGeoip(scan.data.geoip);
   }, [hydrated, scan.data]);
 
   useEffect(() => {
@@ -176,7 +184,11 @@ export default function RealityScan() {
           .map((item) => item.server_id),
       });
       applyView(view);
-      toast.success(t("saved", "Saved"));
+      if (view.geoip?.error) {
+        toast.error(view.geoip.error);
+      } else {
+        toast.success(t("saved", "Saved"));
+      }
     } catch {
       toast.error(t("saveFailed", "Save failed"));
     } finally {
@@ -203,6 +215,7 @@ export default function RealityScan() {
       ...view.config,
       servers: view.config.servers ?? [],
     });
+    setGeoip(view.geoip);
     scan.refetch();
   }
 
@@ -390,6 +403,80 @@ export default function RealityScan() {
                   <p className="text-muted-foreground text-sm">
                     {t("switch.noServers", "No VLESS Reality servers yet")}
                   </p>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            <Card className="xl:col-span-2">
+              <CardHeader>
+                <CardTitle>{t("geoip.title", "IP geolocation")}</CardTitle>
+                <CardDescription>
+                  {t(
+                    "geoip.description",
+                    "The City database gives the server's country and region. The ASN database gives the network, which is how CDN edges are told apart from the VLESS server. Leave a URL blank to use the built-in mirror. A download is accepted only when it is a real GeoLite2-City or GeoLite2-ASN database. SHA256 is an optional pin."
+                  )}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <Toggle
+                  checked={config.geoip_download}
+                  label={t(
+                    "geoip.download",
+                    "Allow download and verification of the databases"
+                  )}
+                  onChange={(geoip_download) => patch({ geoip_download })}
+                />
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field label={t("geoip.cityUrl", "City database URL")}>
+                    <Input
+                      onChange={(event) =>
+                        patch({ geoip_city_url: event.target.value })
+                      }
+                      placeholder="https://"
+                      value={config.geoip_city_url}
+                    />
+                  </Field>
+                  <Field label={t("geoip.citySha", "City SHA256")}>
+                    <Input
+                      onChange={(event) =>
+                        patch({ geoip_city_sha256: event.target.value })
+                      }
+                      spellCheck={false}
+                      value={config.geoip_city_sha256}
+                    />
+                  </Field>
+                  <Field label={t("geoip.asnUrl", "ASN database URL")}>
+                    <Input
+                      onChange={(event) =>
+                        patch({ geoip_asn_url: event.target.value })
+                      }
+                      placeholder="https://"
+                      value={config.geoip_asn_url}
+                    />
+                  </Field>
+                  <Field label={t("geoip.asnSha", "ASN SHA256")}>
+                    <Input
+                      onChange={(event) =>
+                        patch({ geoip_asn_sha256: event.target.value })
+                      }
+                      spellCheck={false}
+                      value={config.geoip_asn_sha256}
+                    />
+                  </Field>
+                </div>
+                <p className="text-muted-foreground text-sm">
+                  {t("geoip.cityStatus", "City database")}:{" "}
+                  {geoip?.city_ready
+                    ? t("geoip.ready", "ready")
+                    : t("geoip.missing", "not ready")}
+                  {" · "}
+                  {t("geoip.asnStatus", "ASN database")}:{" "}
+                  {geoip?.asn_ready
+                    ? t("geoip.ready", "ready")
+                    : t("geoip.missing", "not ready")}
+                </p>
+                {geoip?.error ? (
+                  <p className="text-destructive text-sm">{geoip.error}</p>
                 ) : null}
               </CardContent>
             </Card>
