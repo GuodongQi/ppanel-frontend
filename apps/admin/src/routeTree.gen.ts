@@ -29,11 +29,11 @@ const DashboardSystemIndexLazyRouteImport =
 const DashboardSubscribeIndexLazyRouteImport = createFileRoute(
   '/dashboard/subscribe/',
 )()
-const DashboardProductIndexLazyRouteImport = createFileRoute(
-  '/dashboard/product/',
-)()
 const DashboardRealityScanIndexLazyRouteImport = createFileRoute(
   '/dashboard/reality-scan/',
+)()
+const DashboardProductIndexLazyRouteImport = createFileRoute(
+  '/dashboard/product/',
 )()
 const DashboardPaymentIndexLazyRouteImport = createFileRoute(
   '/dashboard/payment/',
@@ -171,14 +171,6 @@ const DashboardSubscribeIndexLazyRoute =
   } as any).lazy(() =>
     import('./routes/dashboard/subscribe/index.lazy').then((d) => d.Route),
   )
-const DashboardProductIndexLazyRoute =
-  DashboardProductIndexLazyRouteImport.update({
-    id: '/product/',
-    path: '/product/',
-    getParentRoute: () => DashboardRouteLazyRoute,
-  } as any).lazy(() =>
-    import('./routes/dashboard/product/index.lazy').then((d) => d.Route),
-  )
 const DashboardRealityScanIndexLazyRoute =
   DashboardRealityScanIndexLazyRouteImport.update({
     id: '/reality-scan/',
@@ -186,6 +178,14 @@ const DashboardRealityScanIndexLazyRoute =
     getParentRoute: () => DashboardRouteLazyRoute,
   } as any).lazy(() =>
     import('./routes/dashboard/reality-scan/index.lazy').then((d) => d.Route),
+  )
+const DashboardProductIndexLazyRoute =
+  DashboardProductIndexLazyRouteImport.update({
+    id: '/product/',
+    path: '/product/',
+    getParentRoute: () => DashboardRouteLazyRoute,
+  } as any).lazy(() =>
+    import('./routes/dashboard/product/index.lazy').then((d) => d.Route),
   )
 const DashboardPaymentIndexLazyRoute =
   DashboardPaymentIndexLazyRouteImport.update({
@@ -652,18 +652,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardSubscribeIndexLazyRouteImport
       parentRoute: typeof DashboardRouteLazyRoute
     }
-    '/dashboard/product/': {
-      id: '/dashboard/product/'
-      path: '/product'
-      fullPath: '/dashboard/product'
-      preLoaderRoute: typeof DashboardProductIndexLazyRouteImport
-      parentRoute: typeof DashboardRouteLazyRoute
-    }
     '/dashboard/reality-scan/': {
       id: '/dashboard/reality-scan/'
       path: '/reality-scan'
       fullPath: '/dashboard/reality-scan'
       preLoaderRoute: typeof DashboardRealityScanIndexLazyRouteImport
+      parentRoute: typeof DashboardRouteLazyRoute
+    }
+    '/dashboard/product/': {
+      id: '/dashboard/product/'
+      path: '/product'
+      fullPath: '/dashboard/product'
+      preLoaderRoute: typeof DashboardProductIndexLazyRouteImport
       parentRoute: typeof DashboardRouteLazyRoute
     }
     '/dashboard/payment/': {
