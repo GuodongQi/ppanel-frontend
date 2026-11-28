@@ -45,7 +45,7 @@ const emptyConfig: RealityScanConfig = {
   score_margin: 400,
   cooldown_hours: 12,
   server_ids: [],
-  threads: 4,
+  threads: 8,
   timeout_seconds: 5,
   max_cert_bytes: 8192,
 };
@@ -170,7 +170,7 @@ export default function RealityScan() {
           <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
             {t(
               "subtitle",
-              "Every day, probe the public neighbors of your servers and the candidate domains, then switch a Reality destination when a better certificate wins."
+              "Probe only port 443 inside each checked VLESS server's /24. Region and ASN follow that server, not the panel machine. If the /24 has nothing usable, try a .edu site in the same area."
             )}
           </p>
         </div>
@@ -237,16 +237,6 @@ export default function RealityScan() {
                 value={config.daily_time}
               />
             </Field>
-            <Field label={t("schedule.port", "Port")}>
-              <Input
-                min={1}
-                onChange={(event) =>
-                  patch({ port: Number(event.target.value) })
-                }
-                type="number"
-                value={config.port}
-              />
-            </Field>
           </CardContent>
         </Card>
 
@@ -256,33 +246,27 @@ export default function RealityScan() {
             <CardDescription>
               {t(
                 "neighbors.description",
-                "Around each public IPv4 seed, probe that many addresses on either side. Private networks are skipped. The cap is 64."
+                "Only the checked VLESS server's /24, and only port 443. TLS handshake plus one direct request, at most 20 at a time, rate limited. No port scan and no vulnerability probing. A target must offer TLS 1.3 and h2, a valid certificate that is not a CDN edge, a domain that resolves back to that neighbor, HTTP 200/301/302, and a low handshake delay. Cloudflare, Apple, Microsoft, Google, Amazon, Akamai, Fastly and similar sites are excluded."
               )}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <Field label={t("neighbors.radius", "Radius")}>
-              <Input
-                max={64}
-                min={1}
-                onChange={(event) =>
-                  patch({ radius: Number(event.target.value) })
-                }
-                type="number"
-                value={config.radius}
-              />
-            </Field>
             <Toggle
               checked={config.scan_server_neighbors}
               label={t(
                 "neighbors.servers",
-                "Include the selected servers' addresses"
+                "Scan the checked VLESS servers' /24"
               )}
               onChange={(scan_server_neighbors) =>
                 patch({ scan_server_neighbors })
               }
             />
-            <Field label={t("neighbors.seeds", "Extra seeds, one per line")}>
+            <Field
+              label={t(
+                "neighbors.seeds",
+                "Extra domains, one per line. Used only when they resolve inside a checked VLESS /24 or the same region."
+              )}
+            >
               <Textarea
                 onChange={(event) => setSeeds(event.target.value)}
                 placeholder="203.0.113.10"
@@ -299,14 +283,14 @@ export default function RealityScan() {
             <CardDescription>
               {t(
                 "candidates.description",
-                "These domains are probed with their own name and score higher than a random neighbor."
+                "CDN and popular names are ignored. If a /24 has no match, the scan tries a .edu site in the same country, state, or a nearby city, then checks DNS and IP geolocation."
               )}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Textarea
               onChange={(event) => setCandidates(event.target.value)}
-              placeholder={"www.microsoft.com\nwww.apple.com"}
+              placeholder={"mit.edu"}
               rows={8}
               value={candidates}
             />
@@ -354,7 +338,7 @@ export default function RealityScan() {
             <div className="grid grid-cols-3 gap-3">
               <Field label={t("switch.threads", "Threads")}>
                 <Input
-                  max={16}
+                  max={20}
                   min={1}
                   onChange={(event) =>
                     patch({ threads: Number(event.target.value) })
@@ -391,7 +375,7 @@ export default function RealityScan() {
             <p className="mb-2 text-muted-foreground text-xs">
               {t(
                 "switch.serversHint",
-                "Leave every box clear to include every server that has Reality enabled."
+                "Leave every box clear to include every VLESS Reality server. Region and ASN come from each checked server, not from the panel."
               )}
             </p>
             <div className="max-h-56 space-y-2 overflow-auto rounded-lg border p-3">
