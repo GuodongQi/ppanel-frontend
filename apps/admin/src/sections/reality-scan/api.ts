@@ -14,9 +14,18 @@ export interface RealityScanConfig {
   score_margin: number;
   cooldown_hours: number;
   server_ids: number[];
+  servers: RealityScanServerConfig[];
   threads: number;
   timeout_seconds: number;
   max_cert_bytes: number;
+}
+
+export interface RealityScanServerConfig {
+  server_id: number;
+  enabled: boolean;
+  auto_switch: boolean;
+  score_margin: number;
+  cooldown_hours: number;
 }
 
 export interface RealityScanResult {
@@ -35,6 +44,7 @@ export interface RealityScanResult {
   feasible: boolean;
   score: number;
   error?: string;
+  server_ids?: number[];
 }
 
 export interface RealityScanSwitch {
@@ -63,6 +73,14 @@ export interface RealityScanReport {
   applied: boolean;
   results: RealityScanResult[];
   switches: RealityScanSwitch[];
+  edu_searches: RealityScanEduSearch[];
+}
+
+export interface RealityScanEduSearch {
+  server_id: number;
+  query?: string;
+  domains: string[];
+  error?: string;
 }
 
 export interface RealityScanView {

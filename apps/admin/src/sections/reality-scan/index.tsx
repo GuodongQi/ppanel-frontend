@@ -8,7 +8,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@workspace/ui/components/card";
-import { Checkbox } from "@workspace/ui/components/checkbox";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
 import { Switch } from "@workspace/ui/components/switch";
@@ -20,14 +19,22 @@ import {
   TableHeader,
   TableRow,
 } from "@workspace/ui/components/table";
-import { Textarea } from "@workspace/ui/components/textarea";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@workspace/ui/components/tabs";
 import { getServerList } from "@workspace/ui/services/admin/admin";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
   getRealityScan,
   type RealityScanConfig,
+  type RealityScanResult,
+  type RealityScanServerConfig,
+  type RealityScanSwitch,
   type RealityScanView,
   runRealityScan,
   updateRealityScan,
@@ -45,17 +52,11 @@ const emptyConfig: RealityScanConfig = {
   score_margin: 400,
   cooldown_hours: 12,
   server_ids: [],
+  servers: [],
   threads: 8,
   timeout_seconds: 5,
   max_cert_bytes: 8192,
 };
-
-function lines(value: string) {
-  return value
-    .split(/\r?\n/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
 
 function formatWhen(value?: string) {
   if (!value) return "—";
@@ -64,11 +65,33 @@ function formatWhen(value?: string) {
   return date.toLocaleString();
 }
 
+function isVlessReality(server: API.Server) {
+  return (server.protocols ?? []).some(
+    (protocol) =>
+      protocol.enable &&
+      protocol.type?.toLowerCase() === "vless" &&
+      protocol.security?.toLowerCase() === "reality"
+  );
+}
+
+function serverPolicy(
+  config: RealityScanConfig,
+  id: number
+): RealityScanServerConfig {
+  return (
+    config.servers.find((item) => item.server_id === id) ?? {
+      server_id: id,
+      enabled: false,
+      auto_switch: false,
+      score_margin: config.score_margin,
+      cooldown_hours: config.cooldown_hours,
+    }
+  );
+}
+
 export default function RealityScan() {
   const { t } = useTranslation("reality-scan");
   const [config, setConfig] = useState<RealityScanConfig>(emptyConfig);
-  const [seeds, setSeeds] = useState("");
-  const [candidates, setCandidates] = useState("");
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
   const [hydrated, setHydrated] = useState(false);
@@ -86,25 +109,58 @@ export default function RealityScan() {
       return data.data?.list ?? [];
     },
   });
+  const vless = useMemo(
+    () => (servers.data ?? []).filter(isVlessReality),
+    [servers.data]
+  );
 
   useEffect(() => {
     if (hydrated || !scan.data?.config) return;
-    setConfig({ ...emptyConfig, ...scan.data.config });
-    setSeeds((scan.data.config.seeds ?? []).join("\n"));
-    setCandidates((scan.data.config.candidates ?? []).join("\n"));
+    setConfig({
+      ...emptyConfig,
+      ...scan.data.config,
+      servers: scan.data.config.servers ?? [],
+    });
     setHydrated(true);
   }, [hydrated, scan.data]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    setConfig((current) => {
+      const known = new Map(
+        current.servers.map((item) => [item.server_id, item])
+      );
+      const next = vless.map(
+        (server) =>
+          known.get(server.id) ?? {
+            server_id: server.id,
+            enabled: false,
+            auto_switch: false,
+            score_margin: current.score_margin || 400,
+            cooldown_hours: current.cooldown_hours || 12,
+          }
+      );
+      if (
+        next.length === current.servers.length &&
+        next.every((item, index) => item === current.servers[index])
+      ) {
+        return current;
+      }
+      return { ...current, servers: next };
+    });
+  }, [hydrated, vless]);
 
   function patch(partial: Partial<RealityScanConfig>) {
     setConfig((current) => ({ ...current, ...partial }));
   }
 
-  function toggleServer(id: number, checked: boolean) {
-    patch({
-      server_ids: checked
-        ? [...config.server_ids, id]
-        : config.server_ids.filter((item) => item !== id),
-    });
+  function patchServer(id: number, partial: Partial<RealityScanServerConfig>) {
+    setConfig((current) => ({
+      ...current,
+      servers: current.servers.map((item) =>
+        item.server_id === id ? { ...item, ...partial } : item
+      ),
+    }));
   }
 
   async function save() {
@@ -112,8 +168,12 @@ export default function RealityScan() {
     try {
       const view = await updateRealityScan({
         ...config,
-        seeds: lines(seeds),
-        candidates: lines(candidates),
+        servers: config.servers.filter((item) =>
+          vless.some((server) => server.id === item.server_id)
+        ),
+        server_ids: config.servers
+          .filter((item) => item.enabled)
+          .map((item) => item.server_id),
       });
       applyView(view);
       toast.success(t("saved", "Saved"));
@@ -138,9 +198,11 @@ export default function RealityScan() {
   }
 
   function applyView(view: RealityScanView) {
-    setConfig({ ...emptyConfig, ...view.config });
-    setSeeds((view.config.seeds ?? []).join("\n"));
-    setCandidates((view.config.candidates ?? []).join("\n"));
+    setConfig({
+      ...emptyConfig,
+      ...view.config,
+      servers: view.config.servers ?? [],
+    });
     scan.refetch();
   }
 
@@ -170,7 +232,7 @@ export default function RealityScan() {
           <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
             {t(
               "subtitle",
-              "Probe only port 443 inside each checked VLESS server's /24. Region and ASN follow that server, not the panel machine. If the /24 has nothing usable, try a .edu site in the same area."
+              "Only a VLESS server whose scan switch is on is scanned. Each server uses its own address, /24, ASN and region. Education sites are searched for that region; they are not typed in by hand."
             )}
           </p>
         </div>
@@ -213,320 +275,380 @@ export default function RealityScan() {
         </p>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("schedule.title", "Schedule")}</CardTitle>
-            <CardDescription>
-              {t(
-                "schedule.description",
-                "The clock uses the panel time zone. A finished day does not run again."
-              )}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <Toggle
-              checked={config.enabled}
-              label={t("schedule.enabled", "Run every day")}
-              onChange={(enabled) => patch({ enabled })}
-            />
-            <Field label={t("schedule.time", "Time")}>
-              <Input
-                onChange={(event) => patch({ daily_time: event.target.value })}
-                type="time"
-                value={config.daily_time}
-              />
-            </Field>
-          </CardContent>
-        </Card>
+      <Tabs defaultValue="global">
+        <TabsList className="mb-4 h-auto flex-wrap">
+          <TabsTrigger value="global">{t("tabs.global", "Global")}</TabsTrigger>
+          {vless.map((server) => (
+            <TabsTrigger key={server.id} value={`server-${server.id}`}>
+              {server.name}
+              {serverPolicy(config, server.id).enabled ? "" : " · off"}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("neighbors.title", "Neighbor scan")}</CardTitle>
-            <CardDescription>
-              {t(
-                "neighbors.description",
-                "Only the checked VLESS server's /24, and only port 443. TLS handshake plus one direct request, at most 20 at a time, rate limited. No port scan and no vulnerability probing. A target must offer TLS 1.3 and h2, a valid certificate that is not a CDN edge, a domain that resolves back to that neighbor, HTTP 200/301/302, and a low handshake delay. Cloudflare, Apple, Microsoft, Google, Amazon, Akamai, Fastly and similar sites are excluded."
-              )}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <Toggle
-              checked={config.scan_server_neighbors}
-              label={t(
-                "neighbors.servers",
-                "Scan the checked VLESS servers' /24"
-              )}
-              onChange={(scan_server_neighbors) =>
-                patch({ scan_server_neighbors })
-              }
-            />
-            <Field
-              label={t(
-                "neighbors.seeds",
-                "Extra domains, one per line. Used only when they resolve inside a checked VLESS /24 or the same region."
-              )}
-            >
-              <Textarea
-                onChange={(event) => setSeeds(event.target.value)}
-                placeholder="203.0.113.10"
-                rows={4}
-                value={seeds}
-              />
-            </Field>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("candidates.title", "Candidate domains")}</CardTitle>
-            <CardDescription>
-              {t(
-                "candidates.description",
-                "CDN and popular names are ignored. If a /24 has no match, the scan tries a .edu site in the same country, state, or a nearby city, then checks DNS and IP geolocation."
-              )}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              onChange={(event) => setCandidates(event.target.value)}
-              placeholder={"mit.edu"}
-              rows={8}
-              value={candidates}
-            />
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("switch.title", "Automatic switch")}</CardTitle>
-          <CardDescription>
-            {t(
-              "switch.description",
-              "A switch updates the Reality SNI and destination together and leaves the keys alone. Clients need a fresh subscription before the new SNI works."
-            )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <div className="flex flex-col gap-4">
-            <Toggle
-              checked={config.auto_switch}
-              label={t("switch.enabled", "Apply the winning target")}
-              onChange={(auto_switch) => patch({ auto_switch })}
-            />
-            <Field label={t("switch.margin", "Score margin")}>
-              <Input
-                min={0}
-                onChange={(event) =>
-                  patch({ score_margin: Number(event.target.value) })
-                }
-                type="number"
-                value={config.score_margin}
-              />
-            </Field>
-            <Field label={t("switch.cooldown", "Cooldown, hours")}>
-              <Input
-                min={1}
-                onChange={(event) =>
-                  patch({ cooldown_hours: Number(event.target.value) })
-                }
-                type="number"
-                value={config.cooldown_hours}
-              />
-            </Field>
-            <div className="grid grid-cols-3 gap-3">
-              <Field label={t("switch.threads", "Threads")}>
-                <Input
-                  max={20}
-                  min={1}
-                  onChange={(event) =>
-                    patch({ threads: Number(event.target.value) })
-                  }
-                  type="number"
-                  value={config.threads}
+        <TabsContent value="global">
+          <div className="grid gap-4 xl:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("schedule.title", "Schedule")}</CardTitle>
+                <CardDescription>
+                  {t(
+                    "schedule.description",
+                    "The clock uses the panel time zone. A finished day does not run again. Only servers with their own scan switch on are included."
+                  )}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <Toggle
+                  checked={config.enabled}
+                  label={t("schedule.enabled", "Run every day")}
+                  onChange={(enabled) => patch({ enabled })}
                 />
-              </Field>
-              <Field label={t("switch.timeout", "Timeout, seconds")}>
-                <Input
-                  max={10}
-                  min={3}
-                  onChange={(event) =>
-                    patch({ timeout_seconds: Number(event.target.value) })
-                  }
-                  type="number"
-                  value={config.timeout_seconds}
-                />
-              </Field>
-              <Field label={t("switch.cert", "Max certificate bytes")}>
-                <Input
-                  min={1024}
-                  onChange={(event) =>
-                    patch({ max_cert_bytes: Number(event.target.value) })
-                  }
-                  type="number"
-                  value={config.max_cert_bytes}
-                />
-              </Field>
-            </div>
-          </div>
-          <div>
-            <Label>{t("switch.servers", "Servers")}</Label>
-            <p className="mb-2 text-muted-foreground text-xs">
-              {t(
-                "switch.serversHint",
-                "Leave every box clear to include every VLESS Reality server. Region and ASN come from each checked server, not from the panel."
-              )}
-            </p>
-            <div className="max-h-56 space-y-2 overflow-auto rounded-lg border p-3">
-              {(servers.data ?? []).map((server) => (
-                <div
-                  className="flex items-center gap-2 text-sm"
-                  key={server.id}
-                >
-                  <Checkbox
-                    checked={config.server_ids.includes(server.id)}
-                    id={`reality-scan-server-${server.id}`}
-                    onCheckedChange={(checked) =>
-                      toggleServer(server.id, checked === true)
+                <Field label={t("schedule.time", "Time")}>
+                  <Input
+                    onChange={(event) =>
+                      patch({ daily_time: event.target.value })
                     }
+                    type="time"
+                    value={config.daily_time}
                   />
-                  <Label
-                    className="font-medium"
-                    htmlFor={`reality-scan-server-${server.id}`}
-                  >
-                    {server.name}
-                  </Label>
-                  <span className="text-muted-foreground">
-                    {server.address}
-                  </span>
+                </Field>
+                <div className="grid grid-cols-3 gap-3">
+                  <Field label={t("switch.threads", "Threads")}>
+                    <Input
+                      max={20}
+                      min={1}
+                      onChange={(event) =>
+                        patch({ threads: Number(event.target.value) })
+                      }
+                      type="number"
+                      value={config.threads}
+                    />
+                  </Field>
+                  <Field label={t("switch.timeout", "Timeout, seconds")}>
+                    <Input
+                      max={10}
+                      min={3}
+                      onChange={(event) =>
+                        patch({ timeout_seconds: Number(event.target.value) })
+                      }
+                      type="number"
+                      value={config.timeout_seconds}
+                    />
+                  </Field>
+                  <Field label={t("switch.cert", "Max certificate bytes")}>
+                    <Input
+                      min={1024}
+                      onChange={(event) =>
+                        patch({ max_cert_bytes: Number(event.target.value) })
+                      }
+                      type="number"
+                      value={config.max_cert_bytes}
+                    />
+                  </Field>
                 </div>
-              ))}
-              {(servers.data ?? []).length === 0 ? (
-                <p className="text-muted-foreground text-sm">
-                  {t("switch.noServers", "No servers yet")}
-                </p>
-              ) : null}
-            </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("global.servers", "VLESS servers")}</CardTitle>
+                <CardDescription>
+                  {t(
+                    "global.serversHint",
+                    "Turn a server on to scan its /24 and, when needed, education sites in its region. A server that is off is skipped."
+                  )}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                {vless.map((server) => {
+                  const policy = serverPolicy(config, server.id);
+                  return (
+                    <div
+                      className="flex items-center justify-between gap-3 rounded-lg border p-3"
+                      key={server.id}
+                    >
+                      <div>
+                        <div className="font-medium">{server.name}</div>
+                        <div className="text-muted-foreground text-xs">
+                          {server.address}
+                          {server.country || server.city
+                            ? ` · ${[server.country, server.city].filter(Boolean).join(" / ")}`
+                            : ""}
+                        </div>
+                      </div>
+                      <Switch
+                        checked={policy.enabled}
+                        onCheckedChange={(enabled) =>
+                          patchServer(server.id, { enabled })
+                        }
+                      />
+                    </div>
+                  );
+                })}
+                {vless.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">
+                    {t("switch.noServers", "No VLESS Reality servers yet")}
+                  </p>
+                ) : null}
+              </CardContent>
+            </Card>
           </div>
-        </CardContent>
-      </Card>
+        </TabsContent>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("results.title", "Latest usable targets")}</CardTitle>
-          <CardDescription>
-            {t("results.scanned", {
-              count: report?.scanned ?? 0,
-              defaultValue: "{{count}} targets probed",
-            })}
-            {report?.truncated
-              ? t("results.truncated", " The list was cut at the scan cap.")
-              : ""}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("results.score", "Score")}</TableHead>
-                <TableHead>{t("results.target", "Target")}</TableHead>
-                <TableHead>{t("results.certificate", "Certificate")}</TableHead>
-                <TableHead>{t("results.latency", "Latency")}</TableHead>
-                <TableHead>{t("results.source", "Source")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(report?.results ?? []).map((item) => (
-                <TableRow key={`${item.dial_host}-${item.port}-${item.source}`}>
-                  <TableCell className="font-medium">{item.score}</TableCell>
-                  <TableCell>
-                    <div>{item.cert_domain || item.dial_host}</div>
-                    <div className="text-muted-foreground text-xs">
-                      {item.ip || item.dial_host}:{item.port} · {item.tls} ·{" "}
-                      {item.alpn} · {item.curve}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div>{item.cert_issuer || "—"}</div>
-                    <div className="text-muted-foreground text-xs">
-                      {item.cert_bytes ?? 0} B
-                    </div>
-                  </TableCell>
-                  <TableCell>{item.latency_ms ?? "—"} ms</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{item.source}</Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {(report?.results ?? []).length === 0 ? (
-                <TableRow>
-                  <TableCell className="text-muted-foreground" colSpan={5}>
-                    {t("results.empty", "No scan yet")}
-                  </TableCell>
-                </TableRow>
-              ) : null}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("changes.title", "Switch log")}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("changes.server", "Server")}</TableHead>
-                <TableHead>{t("changes.protocol", "Protocol")}</TableHead>
-                <TableHead>{t("changes.from", "From")}</TableHead>
-                <TableHead>{t("changes.to", "To")}</TableHead>
-                <TableHead>{t("changes.reason", "Result")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(report?.switches ?? []).map((item) => (
-                <TableRow
-                  key={`${item.server_id}-${item.protocol}-${item.reason}`}
-                >
-                  <TableCell>{item.server_name}</TableCell>
-                  <TableCell>{item.protocol}</TableCell>
-                  <TableCell>
-                    {item.from_sni || "—"}
-                    <div className="text-muted-foreground text-xs">
-                      {item.from_addr}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {item.to_sni || "—"}
-                    <div className="text-muted-foreground text-xs">
-                      {item.to_addr
-                        ? `${item.to_addr}:${item.to_port ?? ""}`
+        {vless.map((server) => {
+          const policy = serverPolicy(config, server.id);
+          const results = (report?.results ?? []).filter((item) =>
+            item.server_ids?.includes(server.id)
+          );
+          const switches = (report?.switches ?? []).filter(
+            (item) => item.server_id === server.id
+          );
+          const edu = (report?.edu_searches ?? []).find(
+            (item) => item.server_id === server.id
+          );
+          return (
+            <TabsContent key={server.id} value={`server-${server.id}`}>
+              <div className="flex flex-col gap-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>{server.name}</CardTitle>
+                    <CardDescription>
+                      {server.address}
+                      {server.country || server.city
+                        ? ` · ${[server.country, server.city].filter(Boolean).join(" / ")}`
                         : ""}
-                    </div>
-                  </TableCell>
-                  <TableCell>{reasons[item.reason] ?? item.reason}</TableCell>
-                </TableRow>
-              ))}
-              {(report?.switches ?? []).length === 0 ? (
-                <TableRow>
-                  <TableCell className="text-muted-foreground" colSpan={5}>
-                    {report?.applied
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="grid gap-4 md:grid-cols-2">
+                    <Toggle
+                      checked={policy.enabled}
+                      label={t("server.scan", "Scan this server")}
+                      onChange={(enabled) =>
+                        patchServer(server.id, { enabled })
+                      }
+                    />
+                    <Toggle
+                      checked={policy.auto_switch}
+                      label={t("server.apply", "Apply the winning target")}
+                      onChange={(auto_switch) =>
+                        patchServer(server.id, { auto_switch })
+                      }
+                    />
+                    <Field label={t("switch.margin", "Score margin")}>
+                      <Input
+                        min={0}
+                        onChange={(event) =>
+                          patchServer(server.id, {
+                            score_margin: Number(event.target.value),
+                          })
+                        }
+                        type="number"
+                        value={policy.score_margin}
+                      />
+                    </Field>
+                    <Field label={t("switch.cooldown", "Cooldown, hours")}>
+                      <Input
+                        min={1}
+                        onChange={(event) =>
+                          patchServer(server.id, {
+                            cooldown_hours: Number(event.target.value),
+                          })
+                        }
+                        type="number"
+                        value={policy.cooldown_hours}
+                      />
+                    </Field>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>{t("server.edu", "Education search")}</CardTitle>
+                    <CardDescription>
+                      {edu?.query ||
+                        t(
+                          "server.eduHint",
+                          "If this server's /24 has no match, the scan searches the web for education sites in its region and tests them."
+                        )}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {edu?.error ? (
+                      <p className="mb-2 text-destructive text-sm">
+                        {edu.error}
+                      </p>
+                    ) : null}
+                    {(edu?.domains ?? []).length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {edu?.domains.map((domain) => (
+                          <Badge key={domain} variant="secondary">
+                            {domain}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground text-sm">
+                        {t(
+                          "server.eduEmpty",
+                          "No education search for this server yet."
+                        )}
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <ResultTable
+                  empty={t("results.empty", "No scan yet")}
+                  results={results}
+                  title={t("results.title", "Latest usable targets")}
+                />
+                <SwitchTable
+                  empty={
+                    policy.auto_switch
                       ? t("changes.none", "Nothing needed a change")
                       : t(
                           "changes.notApplied",
-                          "This run recorded targets and did not change servers"
-                        )}
-                  </TableCell>
-                </TableRow>
-              ) : null}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                          "This server records targets and does not change its protocol until apply is on."
+                        )
+                  }
+                  reasons={reasons}
+                  switches={switches}
+                  title={t("changes.title", "Switch log")}
+                />
+              </div>
+            </TabsContent>
+          );
+        })}
+      </Tabs>
     </div>
+  );
+}
+
+function ResultTable({
+  title,
+  results,
+  empty,
+}: {
+  title: string;
+  results: RealityScanResult[];
+  empty: string;
+}) {
+  const { t } = useTranslation("reality-scan");
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t("results.score", "Score")}</TableHead>
+              <TableHead>{t("results.target", "Target")}</TableHead>
+              <TableHead>{t("results.certificate", "Certificate")}</TableHead>
+              <TableHead>{t("results.latency", "Latency")}</TableHead>
+              <TableHead>{t("results.source", "Source")}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {results.map((item) => (
+              <TableRow key={`${item.dial_host}-${item.port}-${item.source}`}>
+                <TableCell className="font-medium">{item.score}</TableCell>
+                <TableCell>
+                  <div>{item.cert_domain || item.dial_host}</div>
+                  <div className="text-muted-foreground text-xs">
+                    {item.ip || item.dial_host}:{item.port} · {item.tls} ·{" "}
+                    {item.alpn}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div>{item.cert_issuer || "—"}</div>
+                  <div className="text-muted-foreground text-xs">
+                    {item.cert_bytes ?? 0} B
+                  </div>
+                </TableCell>
+                <TableCell>{item.latency_ms ?? "—"} ms</TableCell>
+                <TableCell>
+                  <Badge variant="secondary">{item.source}</Badge>
+                </TableCell>
+              </TableRow>
+            ))}
+            {results.length === 0 ? (
+              <TableRow>
+                <TableCell className="text-muted-foreground" colSpan={5}>
+                  {empty}
+                </TableCell>
+              </TableRow>
+            ) : null}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SwitchTable({
+  title,
+  switches,
+  reasons,
+  empty,
+}: {
+  title: string;
+  switches: RealityScanSwitch[];
+  reasons: Record<string, string>;
+  empty: string;
+}) {
+  const { t } = useTranslation("reality-scan");
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t("changes.protocol", "Protocol")}</TableHead>
+              <TableHead>{t("changes.from", "From")}</TableHead>
+              <TableHead>{t("changes.to", "To")}</TableHead>
+              <TableHead>{t("changes.reason", "Result")}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {switches.map((item) => (
+              <TableRow
+                key={`${item.protocol}-${item.reason}-${item.from_addr}`}
+              >
+                <TableCell>{item.protocol}</TableCell>
+                <TableCell>
+                  {item.from_sni || "—"}
+                  <div className="text-muted-foreground text-xs">
+                    {item.from_addr}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  {item.to_sni || "—"}
+                  <div className="text-muted-foreground text-xs">
+                    {item.to_addr
+                      ? `${item.to_addr}:${item.to_port ?? ""}`
+                      : ""}
+                  </div>
+                </TableCell>
+                <TableCell>{reasons[item.reason] ?? item.reason}</TableCell>
+              </TableRow>
+            ))}
+            {switches.length === 0 ? (
+              <TableRow>
+                <TableCell className="text-muted-foreground" colSpan={4}>
+                  {empty}
+                </TableCell>
+              </TableRow>
+            ) : null}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 }
 
