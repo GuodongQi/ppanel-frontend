@@ -32,6 +32,11 @@ export function useNavs() {
             icon: "flat-color-icons:data-protection",
           },
           {
+            title: t("Reality Scan", "Reality Scan"),
+            url: "/dashboard/reality-scan",
+            icon: "flat-color-icons:search",
+          },
+          {
             title: t("Node Management", "Node Management"),
             url: "/dashboard/nodes",
             icon: "flat-color-icons:mind-map",

@@ -21,6 +21,7 @@ export const routeI18nNamespaces: Record<string, string[]> = {
   "/dashboard/order": ["order"],
   "/dashboard/payment": ["payment"],
   "/dashboard/product": ["product"],
+  "/dashboard/reality-scan": ["reality-scan"],
   "/dashboard/servers": ["servers"],
   "/dashboard/subscribe": ["subscribe"],
   "/dashboard/system": ["system"],

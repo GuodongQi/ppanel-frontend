@@ -32,6 +32,9 @@ const DashboardSubscribeIndexLazyRouteImport = createFileRoute(
 const DashboardProductIndexLazyRouteImport = createFileRoute(
   '/dashboard/product/',
 )()
+const DashboardRealityScanIndexLazyRouteImport = createFileRoute(
+  '/dashboard/reality-scan/',
+)()
 const DashboardPaymentIndexLazyRouteImport = createFileRoute(
   '/dashboard/payment/',
 )()
@@ -175,6 +178,14 @@ const DashboardProductIndexLazyRoute =
     getParentRoute: () => DashboardRouteLazyRoute,
   } as any).lazy(() =>
     import('./routes/dashboard/product/index.lazy').then((d) => d.Route),
+  )
+const DashboardRealityScanIndexLazyRoute =
+  DashboardRealityScanIndexLazyRouteImport.update({
+    id: '/reality-scan/',
+    path: '/reality-scan/',
+    getParentRoute: () => DashboardRouteLazyRoute,
+  } as any).lazy(() =>
+    import('./routes/dashboard/reality-scan/index.lazy').then((d) => d.Route),
   )
 const DashboardPaymentIndexLazyRoute =
   DashboardPaymentIndexLazyRouteImport.update({
@@ -369,6 +380,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/order': typeof DashboardOrderIndexLazyRoute
   '/dashboard/payment': typeof DashboardPaymentIndexLazyRoute
   '/dashboard/product': typeof DashboardProductIndexLazyRoute
+  '/dashboard/reality-scan': typeof DashboardRealityScanIndexLazyRoute
   '/dashboard/subscribe': typeof DashboardSubscribeIndexLazyRoute
   '/dashboard/system': typeof DashboardSystemIndexLazyRoute
   '/dashboard/ticket': typeof DashboardTicketIndexLazyRoute
@@ -403,6 +415,7 @@ export interface FileRoutesByTo {
   '/dashboard/order': typeof DashboardOrderIndexLazyRoute
   '/dashboard/payment': typeof DashboardPaymentIndexLazyRoute
   '/dashboard/product': typeof DashboardProductIndexLazyRoute
+  '/dashboard/reality-scan': typeof DashboardRealityScanIndexLazyRoute
   '/dashboard/subscribe': typeof DashboardSubscribeIndexLazyRoute
   '/dashboard/system': typeof DashboardSystemIndexLazyRoute
   '/dashboard/ticket': typeof DashboardTicketIndexLazyRoute
@@ -439,6 +452,7 @@ export interface FileRoutesById {
   '/dashboard/order/': typeof DashboardOrderIndexLazyRoute
   '/dashboard/payment/': typeof DashboardPaymentIndexLazyRoute
   '/dashboard/product/': typeof DashboardProductIndexLazyRoute
+  '/dashboard/reality-scan/': typeof DashboardRealityScanIndexLazyRoute
   '/dashboard/subscribe/': typeof DashboardSubscribeIndexLazyRoute
   '/dashboard/system/': typeof DashboardSystemIndexLazyRoute
   '/dashboard/ticket/': typeof DashboardTicketIndexLazyRoute
@@ -476,6 +490,7 @@ export interface FileRouteTypes {
     | '/dashboard/order'
     | '/dashboard/payment'
     | '/dashboard/product'
+    | '/dashboard/reality-scan'
     | '/dashboard/subscribe'
     | '/dashboard/system'
     | '/dashboard/ticket'
@@ -510,6 +525,7 @@ export interface FileRouteTypes {
     | '/dashboard/order'
     | '/dashboard/payment'
     | '/dashboard/product'
+    | '/dashboard/reality-scan'
     | '/dashboard/subscribe'
     | '/dashboard/system'
     | '/dashboard/ticket'
@@ -545,6 +561,7 @@ export interface FileRouteTypes {
     | '/dashboard/order/'
     | '/dashboard/payment/'
     | '/dashboard/product/'
+    | '/dashboard/reality-scan/'
     | '/dashboard/subscribe/'
     | '/dashboard/system/'
     | '/dashboard/ticket/'
@@ -640,6 +657,13 @@ declare module '@tanstack/react-router' {
       path: '/product'
       fullPath: '/dashboard/product'
       preLoaderRoute: typeof DashboardProductIndexLazyRouteImport
+      parentRoute: typeof DashboardRouteLazyRoute
+    }
+    '/dashboard/reality-scan/': {
+      id: '/dashboard/reality-scan/'
+      path: '/reality-scan'
+      fullPath: '/dashboard/reality-scan'
+      preLoaderRoute: typeof DashboardRealityScanIndexLazyRouteImport
       parentRoute: typeof DashboardRouteLazyRoute
     }
     '/dashboard/payment/': {
@@ -844,6 +868,7 @@ interface DashboardRouteLazyRouteChildren {
   DashboardOrderIndexLazyRoute: typeof DashboardOrderIndexLazyRoute
   DashboardPaymentIndexLazyRoute: typeof DashboardPaymentIndexLazyRoute
   DashboardProductIndexLazyRoute: typeof DashboardProductIndexLazyRoute
+  DashboardRealityScanIndexLazyRoute: typeof DashboardRealityScanIndexLazyRoute
   DashboardSubscribeIndexLazyRoute: typeof DashboardSubscribeIndexLazyRoute
   DashboardSystemIndexLazyRoute: typeof DashboardSystemIndexLazyRoute
   DashboardTicketIndexLazyRoute: typeof DashboardTicketIndexLazyRoute
@@ -865,6 +890,7 @@ const DashboardRouteLazyRouteChildren: DashboardRouteLazyRouteChildren = {
   DashboardOrderIndexLazyRoute: DashboardOrderIndexLazyRoute,
   DashboardPaymentIndexLazyRoute: DashboardPaymentIndexLazyRoute,
   DashboardProductIndexLazyRoute: DashboardProductIndexLazyRoute,
+  DashboardRealityScanIndexLazyRoute: DashboardRealityScanIndexLazyRoute,
   DashboardSubscribeIndexLazyRoute: DashboardSubscribeIndexLazyRoute,
   DashboardSystemIndexLazyRoute: DashboardSystemIndexLazyRoute,
   DashboardTicketIndexLazyRoute: DashboardTicketIndexLazyRoute,
